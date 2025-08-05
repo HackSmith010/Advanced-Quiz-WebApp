@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express, { json, urlencoded } from 'express';
 import cors from 'cors';
 import path, { join } from 'path';

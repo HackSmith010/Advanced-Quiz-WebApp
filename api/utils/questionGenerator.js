@@ -86,7 +86,6 @@ function evaluateFormula(formula, values) {
     });
     
     // Simple evaluation (in production, use a proper math parser)
-    // This is a basic implementation - would need proper math expression parser
     const result = Function('"use strict"; return (' + expression + ')')();
     return Math.round(result * 100) / 100; // Round to 2 decimal places
   } catch (error) {
@@ -105,4 +104,5 @@ function shuffleArray(array, rng) {
   return shuffled;
 }
 
-export default generateQuestionForStudent;
+// Corrected export syntax
+export { generateQuestionForStudent };

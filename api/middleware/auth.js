@@ -1,5 +1,4 @@
-import pkg from 'jsonwebtoken';
-const {verify} = pkg;
+import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
@@ -11,7 +10,7 @@ const authenticateToken = (req, res, next) => {
     return res.status(401).json({ error: 'Access token required' });
   }
 
-  verify(token, JWT_SECRET, (err, user) => {
+  jwt.verify(token, JWT_SECRET, (err, user) => {
     if (err) {
       return res.status(403).json({ error: 'Invalid token' });
     }
@@ -20,4 +19,4 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-export default authenticateToken;
+export { authenticateToken };
