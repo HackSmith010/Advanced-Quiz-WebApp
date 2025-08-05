@@ -44,7 +44,8 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      const response = await axios.post('http://localhost:3001/api/auth/login', {
+      // MODIFIED: Changed to relative path for Vercel
+      const response = await axios.post('/api/auth/login', {
         email,
         password
       });
@@ -67,7 +68,8 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (name, email, password) => {
     try {
-      const response = await axios.post('http://localhost:3001/api/auth/register', {
+      // MODIFIED: Changed to relative path for Vercel
+      const response = await axios.post('/api/auth/register', {
         name,
         email,
         password

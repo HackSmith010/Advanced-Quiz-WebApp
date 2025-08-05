@@ -13,7 +13,8 @@ const PDFUpload = () => {
 
   const fetchUploads = async () => {
     try {
-      const response = await axios.get('http://localhost:3001/api/pdf/uploads');
+      // MODIFIED: Changed to relative path for Vercel
+      const response = await axios.get('/api/pdf/uploads');
       setUploads(response.data);
     } catch (error) {
       console.error('Error fetching uploads:', error);
@@ -36,7 +37,8 @@ const PDFUpload = () => {
     formData.append('pdf', file);
 
     try {
-      await axios.post('http://localhost:3001/api/pdf/upload', formData, {
+      // MODIFIED: Changed to relative path for Vercel
+      await axios.post('/api/pdf/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -150,6 +152,40 @@ const PDFUpload = () => {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
               </div>
             )}
+          </div>
+        </div>
+      </div>
+
+      {/* How it works */}
+      <div className="bg-blue-50 rounded-xl p-6 mb-8">
+        <h2 className="text-lg font-semibold text-blue-900 mb-3">How AI Processing Works</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          <div className="flex items-start space-x-2">
+            <div className="bg-blue-100 rounded-full p-1 mt-0.5">
+              <span className="text-blue-600 font-bold text-xs">1</span>
+            </div>
+            <div>
+              <p className="font-medium text-blue-900">Extract Text</p>
+              <p className="text-blue-700">OCR technology reads your PDF content</p>
+            </div>
+          </div>
+          <div className="flex items-start space-x-2">
+            <div className="bg-blue-100 rounded-full p-1 mt-0.5">
+              <span className="text-blue-600 font-bold text-xs">2</span>
+            </div>
+            <div>
+              <p className="font-medium text-blue-900">Identify Questions</p>
+              <p className="text-blue-700">AI parses and identifies individual questions</p>
+            </div>
+          </div>
+          <div className="flex items-start space-x-2">
+            <div className="bg-blue-100 rounded-full p-1 mt-0.5">
+              <span className="text-blue-600 font-bold text-xs">3</span>
+            </div>
+            <div>
+              <p className="font-medium text-blue-900">Create Templates</p>
+              <p className="text-blue-700">Converts to dynamic question templates</p>
+            </div>
           </div>
         </div>
       </div>

@@ -32,7 +32,8 @@ const TestsManager = () => {
 
   const fetchTests = async () => {
     try {
-      const response = await axios.get('http://localhost:3001/api/tests');
+      // MODIFIED: Changed to relative path for Vercel
+      const response = await axios.get('/api/tests');
       setTests(response.data);
     } catch (error) {
       console.error('Error fetching tests:', error);
@@ -43,7 +44,8 @@ const TestsManager = () => {
 
   const fetchApprovedQuestions = async () => {
     try {
-      const response = await axios.get('http://localhost:3001/api/questions/approved');
+      // MODIFIED: Changed to relative path for Vercel
+      const response = await axios.get('/api/questions/approved');
       setQuestions(response.data);
     } catch (error) {
       console.error('Error fetching questions:', error);
@@ -55,7 +57,8 @@ const TestsManager = () => {
     setLoading(true);
 
     try {
-      await axios.post('http://localhost:3001/api/tests', formData);
+      // MODIFIED: Changed to relative path for Vercel
+      await axios.post('/api/tests', formData);
       fetchTests();
       setShowCreateModal(false);
       setFormData({
@@ -74,7 +77,8 @@ const TestsManager = () => {
 
   const updateTestStatus = async (testId, status) => {
     try {
-      await axios.put(`http://localhost:3001/api/tests/${testId}/status`, { status });
+      // MODIFIED: Changed to relative path for Vercel
+      await axios.put(`/api/tests/${testId}/status`, { status });
       fetchTests();
     } catch (error) {
       console.error('Error updating test status:', error);

@@ -13,7 +13,8 @@ const QuestionsManager = () => {
 
   const fetchQuestions = async () => {
     try {
-      const response = await axios.get('http://localhost:3001/api/questions');
+      // MODIFIED: Changed to relative path for Vercel
+      const response = await axios.get('/api/questions');
       setQuestions(response.data);
     } catch (error) {
       console.error('Error fetching questions:', error);
@@ -24,7 +25,8 @@ const QuestionsManager = () => {
 
   const updateQuestionStatus = async (questionId, status) => {
     try {
-      await axios.put(`http://localhost:3001/api/questions/${questionId}/status`, { status });
+      // MODIFIED: Changed to relative path for Vercel
+      await axios.put(`/api/questions/${questionId}/status`, { status });
       fetchQuestions();
     } catch (error) {
       console.error('Error updating question status:', error);
@@ -34,7 +36,8 @@ const QuestionsManager = () => {
   const deleteQuestion = async (questionId) => {
     if (window.confirm('Are you sure you want to delete this question?')) {
       try {
-        await axios.delete(`http://localhost:3001/api/questions/${questionId}`);
+        // MODIFIED: Changed to relative path for Vercel
+        await axios.delete(`/api/questions/${questionId}`);
         fetchQuestions();
       } catch (error) {
         console.error('Error deleting question:', error);

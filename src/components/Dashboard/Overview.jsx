@@ -24,10 +24,11 @@ const Overview = () => {
 
   const fetchOverviewStats = async () => {
     try {
+      // MODIFIED: Changed to relative paths for Vercel
       const [studentsRes, questionsRes, testsRes] = await Promise.all([
-        axios.get('http://localhost:3001/api/students'),
-        axios.get('http://localhost:3001/api/questions'),
-        axios.get('http://localhost:3001/api/tests')
+        axios.get('/api/students'),
+        axios.get('/api/questions'),
+        axios.get('/api/tests')
       ]);
 
       const activeTests = testsRes.data.filter(test => test.status === 'active').length;

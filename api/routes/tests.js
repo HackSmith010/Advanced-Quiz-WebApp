@@ -1,23 +1,23 @@
-import { Router } from 'express';
+import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../database/schema.js';
-import authenticateToken  from '../middleware/auth.js';
-import generateQuestionForStudent from '../utils/questionGenerator.js';
-const router = Router();
+import { authenticateToken } from '../middleware/auth.js';
+
+const router = express.Router();
 
 // Get all tests for a teacher
-router.get('/', authenticateToken, (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
-    const tests = db.prepare(`
+    const query = `
       SELECT t.*, COUNT(tq.id) as total_questions_selected
       FROM tests t
       LEFT JOIN test_questions tq ON t.id = tq.test_id
-      WHERE t.teacher_id = ?
+      WHERE t.teacher_id = $1
       GROUP BY t.id
       ORDER BY t.created_at DESC
-    `).all(req.user.userId);
-
-    res.json(tests);
+    `;
+    const result = await db.query(query, [req.user.userId]);
+    res.json(result.rows);
   } catch (error) {
     console.error('Error fetching tests:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -25,7 +25,8 @@ router.get('/', authenticateToken, (req, res) => {
 });
 
 // Create new test
-router.post('/', authenticateToken, (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
+  const client = await db.getClient(); // Get a client from the pool for transaction
   try {
     const {
       title,
@@ -35,44 +36,31 @@ router.post('/', authenticateToken, (req, res) => {
       question_ids,
       scheduled_date
     } = req.body;
-
     const testLink = uuidv4();
 
-    // Start transaction
-    const insertTest = db.prepare(`
+    await client.query('BEGIN'); // Start transaction
+
+    const insertTestQuery = `
       INSERT INTO tests (title, description, teacher_id, duration_minutes, 
                         marks_per_question, total_questions, test_link, scheduled_date)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING id
+    `;
+    const testResult = await client.query(insertTestQuery, [
+      title, description || null, req.user.userId, duration_minutes || 60,
+      marks_per_question || 1, question_ids.length, testLink, scheduled_date || null
+    ]);
+    const testId = testResult.rows[0].id;
 
-    const insertTestQuestion = db.prepare(`
+    const insertTestQuestionQuery = `
       INSERT INTO test_questions (test_id, question_template_id, question_order)
-      VALUES (?, ?, ?)
-    `);
+      VALUES ($1, $2, $3)
+    `;
+    for (let i = 0; i < question_ids.length; i++) {
+      await client.query(insertTestQuestionQuery, [testId, question_ids[i], i + 1]);
+    }
 
-    const transaction = db.transaction(() => {
-      const testResult = insertTest.run(
-        title,
-        description || null,
-        req.user.userId,
-        duration_minutes || 60,
-        marks_per_question || 1,
-        question_ids.length,
-        testLink,
-        scheduled_date || null
-      );
-
-      const testId = testResult.lastInsertRowid;
-
-      // Add questions to test
-      question_ids.forEach((questionId, index) => {
-        insertTestQuestion.run(testId, questionId, index + 1);
-      });
-
-      return testId;
-    });
-
-    const testId = transaction();
+    await client.query('COMMIT'); // Commit transaction
 
     res.status(201).json({
       id: testId,
@@ -81,8 +69,11 @@ router.post('/', authenticateToken, (req, res) => {
       message: 'Test created successfully'
     });
   } catch (error) {
+    await client.query('ROLLBACK'); // Rollback on error
     console.error('Error creating test:', error);
     res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release(); // Release client back to the pool
   }
 });
 

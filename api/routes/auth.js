@@ -1,11 +1,9 @@
-import { Router } from 'express';
-import pkg from 'bcryptjs';
-const { compare, hash } = pkg;
-import pkg2 from 'jsonwebtoken';
-const { sign } = pkg2;
-import {db} from '../database/schema.js';
-const router = Router();
+import express from 'express';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import { db } from '../database/schema.js';
 
+const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
 // Register teacher
@@ -14,27 +12,29 @@ router.post('/register', async (req, res) => {
     const { name, email, password } = req.body;
 
     // Check if user already exists
-    const existingUser = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    if (existingUser) {
+    const existingUserResult = await db.query('SELECT * FROM users WHERE email = $1', [email]);
+    if (existingUserResult.rows.length > 0) {
       return res.status(400).json({ error: 'User already exists' });
     }
 
     // Hash password
-    const hashedPassword = await hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Insert user
-    const stmt = db.prepare(`
+    // Insert user and return the new ID
+    const insertQuery = `
       INSERT INTO users (name, email, password, role)
-      VALUES (?, ?, ?, 'teacher')
-    `);
-    const result = stmt.run(name, email, hashedPassword);
+      VALUES ($1, $2, $3, 'teacher')
+      RETURNING id
+    `;
+    const result = await db.query(insertQuery, [name, email, hashedPassword]);
+    const newUserId = result.rows[0].id;
 
-    const token = sign({ userId: result.lastInsertRowid }, JWT_SECRET);
+    const token = jwt.sign({ userId: newUserId }, JWT_SECRET);
 
     res.status(201).json({
       message: 'User created successfully',
       token,
-      user: { id: result.lastInsertRowid, name, email, role: 'teacher' }
+      user: { id: newUserId, name, email, role: 'teacher' }
     });
   } catch (error) {
     console.error('Registration error:', error);
@@ -48,18 +48,19 @@ router.post('/login', async (req, res) => {
     const { email, password } = req.body;
 
     // Find user
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    const userResult = await db.query('SELECT * FROM users WHERE email = $1', [email]);
+    const user = userResult.rows[0];
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     // Check password
-    const isPasswordValid = await compare(password, user.password);
+    const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const token = sign({ userId: user.id }, JWT_SECRET);
+    const token = jwt.sign({ userId: user.id }, JWT_SECRET);
 
     res.json({
       message: 'Login successful',

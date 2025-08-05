@@ -1,14 +1,17 @@
-import { Router } from 'express';
-import {db} from '../database/schema.js';
-import generateQuestionForStudent from '../utils/questionGenerator.js';
-const router = Router();
+import express from 'express';
+import { db } from '../database/schema.js';
+import { generateQuestionForStudent } from '../utils/questionGenerator.js';
+
+const router = express.Router();
 
 // Get test by link for student
-router.get('/test/:testLink', (req, res) => {
+router.get('/test/:testLink', async (req, res) => {
   try {
-    const test = db.prepare(`
-      SELECT * FROM tests WHERE test_link = ? AND status = 'active'
-    `).get(req.params.testLink);
+    const result = await db.query(
+      `SELECT * FROM tests WHERE test_link = $1 AND status = 'active'`,
+      [req.params.testLink]
+    );
+    const test = result.rows[0];
 
     if (!test) {
       return res.status(404).json({ error: 'Test not found or not active' });

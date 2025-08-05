@@ -1,18 +1,17 @@
-import { Router } from 'express';
-import {db} from '../database/schema.js';
-import authenticateToken from '../middleware/auth.js';
-const router = Router();
+import express from 'express';
+import { db } from '../database/schema.js';
+import { authenticateToken } from '../middleware/auth.js';
+
+const router = express.Router();
 
 // Get all students for a teacher
-router.get('/', authenticateToken, (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
-    const students = db.prepare(`
-      SELECT * FROM students 
-      WHERE teacher_id = ? 
-      ORDER BY name
-    `).all(req.user.userId);
-
-    res.json(students);
+    const result = await db.query(
+      'SELECT * FROM students WHERE teacher_id = $1 ORDER BY name', 
+      [req.user.userId]
+    );
+    res.json(result.rows);
   } catch (error) {
     console.error('Error fetching students:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -20,27 +19,28 @@ router.get('/', authenticateToken, (req, res) => {
 });
 
 // Add new student
-router.post('/', authenticateToken, (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
   try {
     const { name, rollNumber, email } = req.body;
 
     // Check if roll number already exists
-    const existingStudent = db.prepare(
-      'SELECT * FROM students WHERE roll_number = ? AND teacher_id = ?'
-    ).get(rollNumber, req.user.userId);
-
-    if (existingStudent) {
+    const existingStudentResult = await db.query(
+      'SELECT * FROM students WHERE roll_number = $1 AND teacher_id = $2',
+      [rollNumber, req.user.userId]
+    );
+    if (existingStudentResult.rows.length > 0) {
       return res.status(400).json({ error: 'Roll number already exists' });
     }
 
-    const stmt = db.prepare(`
+    const insertQuery = `
       INSERT INTO students (name, roll_number, email, teacher_id)
-      VALUES (?, ?, ?, ?)
-    `);
-    const result = stmt.run(name, rollNumber, email || null, req.user.userId);
+      VALUES ($1, $2, $3, $4)
+      RETURNING id
+    `;
+    const result = await db.query(insertQuery, [name, rollNumber, email || null, req.user.userId]);
 
     res.status(201).json({
-      id: result.lastInsertRowid,
+      id: result.rows[0].id,
       name,
       roll_number: rollNumber,
       email,
@@ -53,28 +53,28 @@ router.post('/', authenticateToken, (req, res) => {
 });
 
 // Update student
-router.put('/:id', authenticateToken, (req, res) => {
+router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const { name, rollNumber, email } = req.body;
     const studentId = req.params.id;
 
     // Check if roll number exists for another student
-    const existingStudent = db.prepare(
-      'SELECT * FROM students WHERE roll_number = ? AND teacher_id = ? AND id != ?'
-    ).get(rollNumber, req.user.userId, studentId);
-
-    if (existingStudent) {
+    const existingStudentResult = await db.query(
+      'SELECT * FROM students WHERE roll_number = $1 AND teacher_id = $2 AND id != $3',
+      [rollNumber, req.user.userId, studentId]
+    );
+    if (existingStudentResult.rows.length > 0) {
       return res.status(400).json({ error: 'Roll number already exists' });
     }
 
-    const stmt = db.prepare(`
+    const updateQuery = `
       UPDATE students 
-      SET name = ?, roll_number = ?, email = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND teacher_id = ?
-    `);
-    const result = stmt.run(name, rollNumber, email || null, studentId, req.user.userId);
+      SET name = $1, roll_number = $2, email = $3, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $4 AND teacher_id = $5
+    `;
+    const result = await db.query(updateQuery, [name, rollNumber, email || null, studentId, req.user.userId]);
 
-    if (result.changes === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Student not found' });
     }
 
@@ -86,12 +86,14 @@ router.put('/:id', authenticateToken, (req, res) => {
 });
 
 // Delete student
-router.delete('/:id', authenticateToken, (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
   try {
-    const stmt = db.prepare('DELETE FROM students WHERE id = ? AND teacher_id = ?');
-    const result = stmt.run(req.params.id, req.user.userId);
+    const result = await db.query(
+      'DELETE FROM students WHERE id = $1 AND teacher_id = $2',
+      [req.params.id, req.user.userId]
+    );
 
-    if (result.changes === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Student not found' });
     }
 

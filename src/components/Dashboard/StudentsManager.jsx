@@ -20,7 +20,8 @@ const StudentsManager = () => {
 
   const fetchStudents = async () => {
     try {
-      const response = await axios.get('http://localhost:3001/api/students');
+      // MODIFIED: Changed to relative path for Vercel
+      const response = await axios.get('/api/students');
       setStudents(response.data);
     } catch (error) {
       console.error('Error fetching students:', error);
@@ -35,9 +36,11 @@ const StudentsManager = () => {
 
     try {
       if (editingStudent) {
-        await axios.put(`http://localhost:3001/api/students/${editingStudent.id}`, formData);
+        // MODIFIED: Changed to relative path for Vercel
+        await axios.put(`/api/students/${editingStudent.id}`, formData);
       } else {
-        await axios.post('http://localhost:3001/api/students', formData);
+        // MODIFIED: Changed to relative path for Vercel
+        await axios.post('/api/students', formData);
       }
       
       fetchStudents();
@@ -52,7 +55,8 @@ const StudentsManager = () => {
   const handleDelete = async (studentId) => {
     if (window.confirm('Are you sure you want to delete this student?')) {
       try {
-        await axios.delete(`http://localhost:3001/api/students/${studentId}`);
+        // MODIFIED: Changed to relative path for Vercel
+        await axios.delete(`/api/students/${studentId}`);
         fetchStudents();
       } catch (error) {
         console.error('Error deleting student:', error);

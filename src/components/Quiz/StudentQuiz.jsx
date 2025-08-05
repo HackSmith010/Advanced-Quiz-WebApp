@@ -36,7 +36,8 @@ const StudentQuiz = () => {
 
   const fetchTestInfo = async () => {
     try {
-      const response = await axios.get(`http://localhost:3001/api/quiz/test/${testLink}`);
+      // MODIFIED: Changed to relative path for Vercel
+      const response = await axios.get(`/api/quiz/test/${testLink}`);
       setTest(response.data);
     } catch (error) {
       console.error('Error fetching test info:', error);
@@ -48,7 +49,8 @@ const StudentQuiz = () => {
     setLoading(true);
 
     try {
-      const response = await axios.post(`http://localhost:3001/api/quiz/test/${testLink}/start`, {
+      // MODIFIED: Changed to relative path for Vercel
+      const response = await axios.post(`/api/quiz/test/${testLink}/start`, {
         student_name: studentInfo.name,
         roll_number: studentInfo.rollNumber
       });
@@ -57,7 +59,8 @@ const StudentQuiz = () => {
       setAttempt({ id: attemptId });
       
       // Fetch questions
-      const questionsResponse = await axios.get(`http://localhost:3001/api/quiz/attempt/${attemptId}/questions`);
+      // MODIFIED: Changed to relative path for Vercel
+      const questionsResponse = await axios.get(`/api/quiz/attempt/${attemptId}/questions`);
       setQuestions(questionsResponse.data.questions);
       setTimeRemaining(questionsResponse.data.attempt.duration_minutes * 60);
       setShowLoginForm(false);
@@ -81,7 +84,8 @@ const StudentQuiz = () => {
 
   const submitAnswer = async (answerId, selectedAnswer) => {
     try {
-      await axios.post(`http://localhost:3001/api/quiz/answer/${answerId}/submit`, {
+      // MODIFIED: Changed to relative path for Vercel
+      await axios.post(`/api/quiz/answer/${answerId}/submit`, {
         student_answer: selectedAnswer,
         time_taken: 30 // Could track actual time taken
       });
@@ -97,7 +101,8 @@ const StudentQuiz = () => {
 
     setLoading(true);
     try {
-      const response = await axios.post(`http://localhost:3001/api/quiz/attempt/${attempt.id}/submit`);
+      // MODIFIED: Changed to relative path for Vercel
+      const response = await axios.post(`/api/quiz/attempt/${attempt.id}/submit`);
       setSubmitted(true);
       alert(`Test submitted successfully! Your score: ${response.data.total_score}`);
     } catch (error) {
