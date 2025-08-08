@@ -39,8 +39,8 @@ const Sidebar = ({ open, setOpen }) => {
       `}>
         <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200">
           <div className="flex items-center">
-            <Brain className="h-8 w-8 text-blue-600" />
-            <span className="ml-2 text-xl font-bold text-gray-900">IntelliQuiz AI</span>
+            <img src="/logo.png" alt="WC&S Test Logo" className="h-8 w-auto" />
+            <span className="ml-2 text-xl font-bold text-gray-900">WC & S Test</span>
           </div>
           <button
             className="lg:hidden text-gray-500 hover:text-gray-700"
