@@ -1,84 +1,93 @@
-import express from 'express';
-import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
-import pdfParse from 'pdf-parse';
-import { fileURLToPath } from 'url';
-import { db } from '../database/schema.js';
-import { authenticateToken } from '../middleware/auth.js';
-import { processQuestionsWithAI } from '../utils/aiProcessor.js';
+import express from "express";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import pdfParse from "pdf-parse";
+
+import { db } from "../database/schema.js";
+import { authenticateToken } from "../middleware/auth.js";
+import { processQuestionsWithAI } from "../utils/aiProcessor.js";
 
 const router = express.Router();
-
-// Fix for __dirname in ES Modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Configure multer for PDF uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '../../uploads'); // Adjusted path for api folder
+    const uploadDir = "/tmp/uploads";
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'pdf-' + uniqueSuffix + path.extname(file.originalname));
-  }
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, "pdf-" + uniqueSuffix + path.extname(file.originalname));
+  },
 });
 
-const upload = multer({ storage });
+const upload = multer({
+  storage: storage,
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === "application/pdf") {
+      cb(null, true);
+    } else {
+      cb(new Error("Only PDF files are allowed"), false);
+    }
+  },
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+});
 
 // Upload and process PDF
-router.post('/upload', authenticateToken, upload.single('pdf'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No PDF file uploaded' });
-    }
+router.post(
+  "/upload",
+  authenticateToken,
+  upload.single("pdf"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No PDF file uploaded" });
+      }
 
-    const insertQuery = `
+      const insertQuery = `
       INSERT INTO pdf_uploads (filename, original_name, file_path, teacher_id, processing_status)
       VALUES ($1, $2, $3, $4, 'processing')
       RETURNING id
     `;
-    const uploadResult = await db.query(insertQuery, [
-      req.file.filename,
-      req.file.originalname,
-      req.file.path,
-      req.user.userId
-    ]);
-    const uploadId = uploadResult.rows[0].id;
+      const uploadResult = await db.query(insertQuery, [
+        req.file.filename,
+        req.file.originalname,
+        req.file.path,
+        req.user.userId,
+      ]);
+      const uploadId = uploadResult.rows[0].id;
 
-    processPDFAsync(uploadId, req.file.path, req.user.userId);
+      processPDFAsync(uploadId, req.file.path, req.user.userId);
 
-    res.json({
-      upload_id: uploadId,
-      message: 'PDF uploaded successfully. Processing in background.'
-    });
-  } catch (error) {
-    console.error('Error uploading PDF:', error);
-    res.status(500).json({ error: 'Internal server error' });
+      res.json({
+        upload_id: uploadId,
+        message: "PDF uploaded successfully. Processing in background.",
+      });
+    } catch (error) {
+      console.error("Error uploading PDF:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
   }
-});
+);
 
 // Get upload status
-router.get('/upload/:id/status', authenticateToken, async (req, res) => {
+router.get("/upload/:id/status", authenticateToken, async (req, res) => {
   try {
     const result = await db.query(
-      'SELECT * FROM pdf_uploads WHERE id = $1 AND teacher_id = $2',
+      "SELECT * FROM pdf_uploads WHERE id = $1 AND teacher_id = $2",
       [req.params.id, req.user.userId]
     );
     const upload = result.rows[0];
 
     if (!upload) {
-      return res.status(404).json({ error: 'Upload not found' });
+      return res.status(404).json({ error: "Upload not found" });
     }
     res.json(upload);
   } catch (error) {
-    console.error('Error fetching upload status:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Error fetching upload status:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -92,7 +101,7 @@ async function processPDFAsync(uploadId, filePath, teacherId) {
 
     const questionTemplates = await processQuestionsWithAI(text);
 
-    await client.query('BEGIN'); // Start transaction
+    await client.query("BEGIN"); // Start transaction
 
     const insertTemplateQuery = `
       INSERT INTO question_templates 
@@ -108,8 +117,8 @@ async function processPDFAsync(uploadId, filePath, teacherId) {
         JSON.stringify(template.variables),
         template.correct_answer_formula,
         JSON.stringify(template.distractor_formulas),
-        template.category || 'General',
-        teacherId
+        template.category || "General",
+        teacherId,
       ]);
     }
 
@@ -120,11 +129,11 @@ async function processPDFAsync(uploadId, filePath, teacherId) {
     `;
     await client.query(updateUploadQuery, [questionTemplates.length, uploadId]);
 
-    await client.query('COMMIT'); // Commit transaction
+    await client.query("COMMIT"); // Commit transaction
   } catch (error) {
-    await client.query('ROLLBACK'); // Rollback on error
-    console.error('Error processing PDF:', error);
-    
+    await client.query("ROLLBACK"); // Rollback on error
+    console.error("Error processing PDF:", error);
+
     const updateQuery = `
       UPDATE pdf_uploads SET processing_status = 'failed' WHERE id = $1
     `;
