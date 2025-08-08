@@ -41,10 +41,12 @@ const Login = () => {
           </p>
 
           <h2 className="text-3xl font-bold text-gray-900">WC&S Test</h2>
-          <p className="mt-2 text-gray-600">Sign in to your teacher account</p>
         </div>
 
         <div className="bg-white py-8 px-6 shadow-xl rounded-xl">
+          <p className="text-center text-2xl text-gray-900 font-bold mb-6">
+            Sign in
+          </p>
           <form className="space-y-6" onSubmit={handleSubmit}>
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">

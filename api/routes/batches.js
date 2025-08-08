@@ -4,7 +4,6 @@ import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Get all batches for a teacher
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const query = `
@@ -23,7 +22,6 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
-// Create a new batch
 router.post('/', authenticateToken, async (req, res) => {
   try {
     const { name } = req.body;
@@ -40,7 +38,6 @@ router.post('/', authenticateToken, async (req, res) => {
   }
 });
 
-// Get students in a specific batch
 router.get('/:batchId/students', authenticateToken, async (req, res) => {
     try {
         const { batchId } = req.params;
@@ -57,7 +54,6 @@ router.get('/:batchId/students', authenticateToken, async (req, res) => {
     }
 });
 
-// Add a student to a batch
 router.post('/:batchId/students', authenticateToken, async (req, res) => {
     try {
         const { batchId } = req.params;
@@ -70,6 +66,41 @@ router.post('/:batchId/students', authenticateToken, async (req, res) => {
         res.status(201).json({ message: 'Student added to batch successfully' });
     } catch (error) {
         console.error('Error adding student to batch:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.delete('/:batchId', authenticateToken, async (req, res) => {
+  try {
+    const { batchId } = req.params;
+    const result = await db.query(
+      'DELETE FROM batches WHERE id = $1 AND teacher_id = $2',
+      [batchId, req.user.userId]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Batch not found' });
+    }
+    res.json({ message: 'Batch deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting batch:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.delete('/:batchId/students/:studentId', authenticateToken, async (req, res) => {
+    try {
+        const { batchId, studentId } = req.params;
+        const query = `
+            DELETE FROM student_batches 
+            WHERE batch_id = $1 AND student_id = $2
+        `;
+        const result = await db.query(query, [batchId, studentId]);
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Student not found in this batch.' });
+        }
+        res.json({ message: 'Student removed from batch successfully' });
+    } catch (error) {
+        console.error('Error removing student from batch:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

@@ -50,15 +50,16 @@ const Register = () => {
           <div className="flex justify-center mb-4">
             <img src="/logo.png" alt="WC&S Test Logo" className="h-20 w-auto" />
           </div>
-          <p className="text-xs text-gray-500 leading-tight">
+          <p className="text-1xl text-gray-500 leading-tight">
             Siemens Technical Academy
           </p>
-
           <h2 className="text-3xl font-bold text-gray-900">WC&S Test</h2>
-          <p className="mt-2 text-gray-600">Create your teacher account</p>
         </div>
 
         <div className="bg-white py-8 px-6 shadow-xl rounded-xl">
+          <p className="text-center text-2xl text-gray-900 font-bold mb-6">
+            Create your teacher account
+          </p>
           <form className="space-y-6" onSubmit={handleSubmit}>
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">

@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-import { Plus, Users, Edit, Trash2, X } from "lucide-react"; // Changed Box to X
+import { Plus, Users, Edit, Trash2, X, AlertTriangle } from "lucide-react";
 
-// Reusable modal component
+// Reusable Modal Component
 const Modal = ({ children, onClose }) => (
-  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div className="bg-white p-6 rounded-lg w-full max-w-md relative">
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="bg-white p-6 rounded-lg w-full max-w-md relative shadow-xl">
       <button
         onClick={onClose}
-        className="absolute top-2 right-2 p-1 rounded-full hover:bg-gray-200"
+        className="absolute top-3 right-3 p-1 rounded-full text-gray-500 hover:bg-gray-200"
       >
         <X size={20} />
       </button>
@@ -17,20 +17,70 @@ const Modal = ({ children, onClose }) => (
   </div>
 );
 
+// Confirmation Modal for Deletions
+const ConfirmationModal = ({
+  isOpen,
+  onClose,
+  onConfirm,
+  itemType,
+  itemName,
+}) => {
+  if (!isOpen) return null;
+  const isBatch = itemType === "batch";
+  const title = isBatch ? "Delete Batch" : "Remove Student";
+  const message = isBatch
+    ? `Are you sure you want to delete the batch "${itemName}"? All student associations will be removed. This action cannot be undone.`
+    : `Are you sure you want to remove "${itemName}" from this batch?`;
+
+  return (
+    <Modal onClose={onClose}>
+      <div className="flex items-start">
+        <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
+          <AlertTriangle className="h-6 w-6 text-red-600" />
+        </div>
+        <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+          <h3 className="text-lg leading-6 font-medium text-gray-900">
+            {title}
+          </h3>
+          <div className="mt-2">
+            <p className="text-sm text-gray-500">{message}</p>
+          </div>
+        </div>
+      </div>
+      <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
+        <button
+          onClick={onConfirm}
+          type="button"
+          className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 sm:ml-3 sm:w-auto sm:text-sm"
+        >
+          {isBatch ? "Delete" : "Remove"}
+        </button>
+        <button
+          onClick={onClose}
+          type="button"
+          className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:w-auto sm:text-sm"
+        >
+          Cancel
+        </button>
+      </div>
+    </Modal>
+  );
+};
+
 const BatchesManager = () => {
   const [batches, setBatches] = useState([]);
   const [allStudents, setAllStudents] = useState([]);
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [batchStudents, setBatchStudents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState(false); // For modal actions
-  const [error, setError] = useState(""); // For displaying errors
+  const [actionLoading, setActionLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  // State for modals
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [showStudentModal, setShowStudentModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
 
-  // Form data
   const [newBatchName, setNewBatchName] = useState("");
   const [editingStudent, setEditingStudent] = useState(null);
   const [studentFormData, setStudentFormData] = useState({
@@ -50,6 +100,7 @@ const BatchesManager = () => {
       setBatches(response.data);
     } catch (error) {
       console.error("Error fetching batches:", error);
+      setError("Could not load batches.");
     } finally {
       setLoading(false);
     }
@@ -83,7 +134,7 @@ const BatchesManager = () => {
 
   const handleSelectBatch = async (batch) => {
     setSelectedBatch(batch);
-    setBatchStudents([]); // Clear previous students
+    setBatchStudents([]);
     try {
       const response = await axios.get(`/api/batches/${batch.id}/students`);
       setBatchStudents(response.data);
@@ -124,6 +175,38 @@ const BatchesManager = () => {
     }
   };
 
+  const handleDeleteClick = (type, item) => {
+    setItemToDelete({ type, data: item });
+    setShowConfirmModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
+    setActionLoading(true);
+    setError("");
+    try {
+      if (itemToDelete.type === "batch") {
+        await axios.delete(`/api/batches/${itemToDelete.data.id}`);
+        fetchBatches();
+        setSelectedBatch(null);
+      } else if (itemToDelete.type === "student_from_batch") {
+        await axios.delete(
+          `/api/batches/${selectedBatch.id}/students/${itemToDelete.data.id}`
+        );
+        if (selectedBatch) handleSelectBatch(selectedBatch);
+      }
+    } catch (err) {
+      console.error(`Error deleting ${itemToDelete.type}:`, err);
+      setError(
+        err.response?.data?.error || `Failed to delete ${itemToDelete.type}.`
+      );
+    } finally {
+      setActionLoading(false);
+      setShowConfirmModal(false);
+      setItemToDelete(null);
+    }
+  };
+
   const openStudentModal = (student = null) => {
     setError("");
     setEditingStudent(student);
@@ -150,17 +233,15 @@ const BatchesManager = () => {
     setShowBatchModal(true);
   };
 
-  const studentsNotInBatch = allStudents.filter(
-    (s) => !batchStudents.some((bs) => bs.id === s.id)
-  );
-
   return (
     <div>
-      <h1 className="text-3xl font-bold text-gray-900 mb-8">
+      <h1 className="text-3xl font-bold text-gray-900 mb-4">
         Batches & Students
       </h1>
+      {error && (
+        <p className="text-red-500 bg-red-100 p-3 rounded-lg mb-4">{error}</p>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        {/* Batches List */}
         <div className="md:col-span-1 bg-white p-4 rounded-lg border">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold">Batches</h2>
@@ -182,16 +263,28 @@ const BatchesManager = () => {
                     : "bg-white hover:bg-gray-50"
                 }`}
               >
-                <p className="font-semibold">{batch.name}</p>
-                <p className="text-sm text-gray-500">
-                  {batch.student_count} students
-                </p>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="font-semibold">{batch.name}</p>
+                    <p className="text-sm text-gray-500">
+                      {batch.student_count} students
+                    </p>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteClick("batch", batch);
+                    }}
+                    className="text-red-500 hover:text-red-700 p-1"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Students in Batch */}
         <div className="md:col-span-2 bg-white p-4 rounded-lg border">
           {selectedBatch ? (
             <div>
@@ -225,7 +318,12 @@ const BatchesManager = () => {
                       >
                         <Edit size={18} />
                       </button>
-                      <button className="text-red-500 hover:text-red-700">
+                      <button
+                        onClick={() =>
+                          handleDeleteClick("student_from_batch", student)
+                        }
+                        className="text-red-500 hover:text-red-700"
+                      >
                         <Trash2 size={18} />
                       </button>
                     </div>
@@ -241,7 +339,6 @@ const BatchesManager = () => {
         </div>
       </div>
 
-      {/* Create Batch Modal */}
       {showBatchModal && (
         <Modal onClose={() => setShowBatchModal(false)}>
           <h2 className="text-lg font-semibold mb-4">Create New Batch</h2>
@@ -275,7 +372,6 @@ const BatchesManager = () => {
         </Modal>
       )}
 
-      {/* Add/Edit Student Modal */}
       {showStudentModal && (
         <Modal onClose={closeStudentModal}>
           <h2 className="text-xl font-semibold text-gray-900 mb-4">
@@ -356,6 +452,14 @@ const BatchesManager = () => {
           </form>
         </Modal>
       )}
+
+      <ConfirmationModal
+        isOpen={showConfirmModal}
+        onClose={() => setShowConfirmModal(false)}
+        onConfirm={confirmDelete}
+        itemType={itemToDelete?.type}
+        itemName={itemToDelete?.data?.name}
+      />
     </div>
   );
 };
