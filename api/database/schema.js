@@ -1,9 +1,4 @@
 import pg from 'pg';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const { Pool } = pg;
 const pool = new Pool({
@@ -15,12 +10,12 @@ const pool = new Pool({
 
 const db = {
   query: (text, params) => pool.query(text, params),
+  getClient: () => pool.connect(),
 };
 
 const createTables = async () => {
   const client = await pool.connect();
   try {
-    // Users table (Teachers)
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -34,7 +29,6 @@ const createTables = async () => {
       )
     `);
 
-    // Students table
     await client.query(`
       CREATE TABLE IF NOT EXISTS students (
         id SERIAL PRIMARY KEY,
@@ -48,7 +42,6 @@ const createTables = async () => {
       )
     `);
 
-    // Question templates table
     await client.query(`
       CREATE TABLE IF NOT EXISTS question_templates (
         id SERIAL PRIMARY KEY,
@@ -66,7 +59,6 @@ const createTables = async () => {
       )
     `);
 
-    // Tests table
     await client.query(`
       CREATE TABLE IF NOT EXISTS tests (
         id SERIAL PRIMARY KEY,
@@ -84,7 +76,6 @@ const createTables = async () => {
       )
     `);
 
-    // Test questions mapping table
     await client.query(`
       CREATE TABLE IF NOT EXISTS test_questions (
         id SERIAL PRIMARY KEY,
@@ -95,7 +86,6 @@ const createTables = async () => {
       )
     `);
 
-    // Student test attempts table
     await client.query(`
       CREATE TABLE IF NOT EXISTS test_attempts (
         id SERIAL PRIMARY KEY,
@@ -113,7 +103,6 @@ const createTables = async () => {
       )
     `);
 
-    // Student answers table
     await client.query(`
       CREATE TABLE IF NOT EXISTS student_answers (
         id SERIAL PRIMARY KEY,
@@ -130,7 +119,6 @@ const createTables = async () => {
       )
     `);
 
-    // PDF uploads table
     await client.query(`
       CREATE TABLE IF NOT EXISTS pdf_uploads (
         id SERIAL PRIMARY KEY,
