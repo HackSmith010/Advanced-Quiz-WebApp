@@ -2,12 +2,8 @@ import 'dotenv/config';
 import express, { json, urlencoded } from 'express';
 import cors from 'cors';
 import path, { join } from 'path';
-import { fileURLToPath } from 'url';
 
 import { createTables } from './database/schema.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 import authRoutes from './routes/auth.js';
 import studentRoutes from './routes/students.js';
@@ -26,7 +22,8 @@ app.use(cors());
 app.use(json());
 app.use(urlencoded({ extended: true }));
 
-app.use('/uploads', expressStatic(join(__dirname, '../uploads')));
+const rootDir = process.cwd();
+app.use('/uploads', expressStatic(join(rootDir, 'uploads')));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/students', studentRoutes);
