@@ -61,11 +61,10 @@ async function callLocalLlamaAPI(text) {
   `;
 
   const payload = {
-    // You can change 'llama3.1' to whichever model you have downloaded
     model: "llama3.1", 
     prompt: prompt,
-    format: "json", // Instructs Ollama to return valid JSON
-    stream: false   // We want the full response at once
+    format: "json", 
+    stream: false   
   };
 
   const response = await fetch(apiUrl, {
