@@ -156,7 +156,7 @@ const PDFUpload = () => {
         </div>
       </div>
 
-      {/* How it works */}
+      {/* How it works
       <div className="bg-blue-50 rounded-xl p-6 mb-8">
         <h2 className="text-lg font-semibold text-blue-900 mb-3">How AI Processing Works</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
@@ -188,7 +188,7 @@ const PDFUpload = () => {
             </div>
           </div>
         </div>
-      </div>
+      </div> */}
 
       {/* Upload History */}
       <div className="bg-white rounded-xl border border-gray-200">
