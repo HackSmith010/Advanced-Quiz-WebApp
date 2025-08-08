@@ -7,13 +7,15 @@ import {
   FileQuestion, 
   ClipboardList, 
   Upload,
+  Box, // New Icon for Batches
   X
 } from 'lucide-react';
 
 const Sidebar = ({ open, setOpen }) => {
   const navigation = [
     { name: 'Overview', href: '/dashboard/overview', icon: Home },
-    { name: 'Students', href: '/dashboard/students', icon: Users },
+    // The "Students" link is removed, as it's now part of Batches
+    { name: 'Batches & Students', href: '/dashboard/batches', icon: Box }, 
     { name: 'Questions', href: '/dashboard/questions', icon: FileQuestion },
     { name: 'Tests', href: '/dashboard/tests', icon: ClipboardList },
     { name: 'Upload PDF', href: '/dashboard/upload', icon: Upload },
@@ -38,7 +40,7 @@ const Sidebar = ({ open, setOpen }) => {
         <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200">
           <div className="flex items-center">
             <Brain className="h-8 w-8 text-blue-600" />
-            <span className="ml-2 text-xl font-bold text-gray-900">WC&S Test</span>
+            <span className="ml-2 text-xl font-bold text-gray-900">IntelliQuiz AI</span>
           </div>
           <button
             className="lg:hidden text-gray-500 hover:text-gray-700"

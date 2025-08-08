@@ -1,107 +1,73 @@
-import express from "express";
-import multer from "multer";
-import path from "path";
-import fs from "fs";
-import pdfParse from "pdf-parse";
+import express from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import pdfParse from 'pdf-parse';
 
-import { db } from "../database/schema.js";
-import { authenticateToken } from "../middleware/auth.js";
-import { processQuestionsWithAI } from "../utils/aiProcessor.js";
+import { db } from '../database/schema.js';
+import { authenticateToken } from '../middleware/auth.js';
+import { processQuestionsWithAI } from '../utils/aiProcessor.js';
 
 const router = express.Router();
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = "/tmp/uploads";
+    const uploadDir = '/tmp/uploads'; 
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, "pdf-" + uniqueSuffix + path.extname(file.originalname));
-  },
-});
-
-const upload = multer({
-  storage: storage,
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype === "application/pdf") {
-      cb(null, true);
-    } else {
-      cb(new Error("Only PDF files are allowed"), false);
-    }
-  },
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
-});
-
-// Upload and process PDF
-router.post(
-  "/upload",
-  authenticateToken,
-  upload.single("pdf"),
-  async (req, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({ error: "No PDF file uploaded" });
-      }
-
-      const insertQuery = `
-      INSERT INTO pdf_uploads (filename, original_name, file_path, teacher_id, processing_status)
-      VALUES ($1, $2, $3, $4, 'processing')
-      RETURNING id
-    `;
-      const uploadResult = await db.query(insertQuery, [
-        req.file.filename,
-        req.file.originalname,
-        req.file.path,
-        req.user.userId,
-      ]);
-      const uploadId = uploadResult.rows[0].id;
-
-      processPDFAsync(uploadId, req.file.path, req.user.userId);
-
-      res.json({
-        upload_id: uploadId,
-        message: "PDF uploaded successfully. Processing in background.",
-      });
-    } catch (error) {
-      console.error("Error uploading PDF:", error);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  }
-);
-
-// Get upload status
-router.get("/upload/:id/status", authenticateToken, async (req, res) => {
-  try {
-    const result = await db.query(
-      "SELECT * FROM pdf_uploads WHERE id = $1 AND teacher_id = $2",
-      [req.params.id, req.user.userId]
-    );
-    const upload = result.rows[0];
-
-    if (!upload) {
-      return res.status(404).json({ error: "Upload not found" });
-    }
-    res.json(upload);
-  } catch (error) {
-    console.error("Error fetching upload status:", error);
-    res.status(500).json({ error: "Internal server error" });
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'pdf-' + uniqueSuffix + path.extname(file.originalname));
   }
 });
 
-// Background PDF processing function
+const upload = multer({ storage });
+
 async function processPDFAsync(uploadId, filePath, teacherId) {
-  const client = await db.getClient(); // Get a client from the pool for transaction
+  let client;
   try {
     const dataBuffer = fs.readFileSync(filePath);
-    const pdfData = await pdfParse(dataBuffer);
-    const text = pdfData.text;
+    const pagesText = [];
 
-    const questionTemplates = await processQuestionsWithAI(text);
+    const pdfData = await pdfParse(dataBuffer, {
+      pagerender: (pageData) => {
+        return pageData.getTextContent({ normalizeWhitespace: true })
+          .then(textContent => {
+            const pageText = textContent.items.map(item => item.str).join(' ');
+            pagesText.push(pageText);
+            return pageText;
+          });
+      }
+    });
 
-    await client.query("BEGIN"); // Start transaction
+    let allQuestionTemplates = [];
+    for (let i = 0; i < pagesText.length; i++) {
+      const pageText = pagesText[i];
+      console.log(`Processing Page ${i + 1} of ${pagesText.length}...`);
+      if (pageText && pageText.trim().length > 50) { 
+        const templatesFromPage = await processQuestionsWithAI(pageText);
+        if (templatesFromPage && Array.isArray(templatesFromPage)) {
+            allQuestionTemplates.push(...templatesFromPage);
+        }
+      }
+    }
+    
+    const validTemplates = allQuestionTemplates.filter(template => 
+        template &&
+        typeof template.original_text === 'string' &&
+        typeof template.question_template === 'string' &&
+        typeof template.correct_answer_formula === 'string' &&
+        Array.isArray(template.variables) &&
+        Array.isArray(template.distractor_formulas)
+    );
+    
+    console.log(`AI processing complete. Found ${allQuestionTemplates.length} potential questions, ${validTemplates.length} are valid and will be saved.`);
+
+    client = await db.getClient();
+    await client.query('BEGIN');
 
     const insertTemplateQuery = `
       INSERT INTO question_templates 
@@ -110,16 +76,16 @@ async function processPDFAsync(uploadId, filePath, teacherId) {
       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending_review')
     `;
 
-    for (const template of questionTemplates) {
-      await client.query(insertTemplateQuery, [
-        template.original_text,
-        template.question_template,
-        JSON.stringify(template.variables),
-        template.correct_answer_formula,
-        JSON.stringify(template.distractor_formulas),
-        template.category || "General",
-        teacherId,
-      ]);
+    for (const template of validTemplates) {
+        await client.query(insertTemplateQuery, [
+          template.original_text,
+          template.question_template,
+          JSON.stringify(template.variables),
+          template.correct_answer_formula,
+          JSON.stringify(template.distractor_formulas),
+          template.category || 'General',
+          teacherId
+        ]);
     }
 
     const updateUploadQuery = `
@@ -127,20 +93,83 @@ async function processPDFAsync(uploadId, filePath, teacherId) {
       SET processing_status = 'completed', questions_extracted = $1
       WHERE id = $2
     `;
-    await client.query(updateUploadQuery, [questionTemplates.length, uploadId]);
+    await client.query(updateUploadQuery, [validTemplates.length, uploadId]);
 
-    await client.query("COMMIT"); // Commit transaction
+    await client.query('COMMIT');
+
   } catch (error) {
-    await client.query("ROLLBACK"); // Rollback on error
-    console.error("Error processing PDF:", error);
-
-    const updateQuery = `
-      UPDATE pdf_uploads SET processing_status = 'failed' WHERE id = $1
-    `;
-    await db.query(updateQuery, [uploadId]);
+    if (client) await client.query('ROLLBACK');
+    console.error('Error processing PDF:', error);
+    await db.query(`UPDATE pdf_uploads SET processing_status = 'failed' WHERE id = $1`, [uploadId]);
   } finally {
-    client.release(); // Release client back to the pool
+    if (client) client.release();
+    try {
+      fs.unlinkSync(filePath);
+    } catch (cleanupError) {
+      console.error('Error deleting uploaded PDF file:', cleanupError);
+    }
   }
 }
+
+router.post('/upload', authenticateToken, upload.single('pdf'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No PDF file uploaded' });
+    }
+    const insertQuery = `
+      INSERT INTO pdf_uploads (filename, original_name, file_path, teacher_id, processing_status)
+      VALUES ($1, $2, $3, $4, 'processing')
+      RETURNING id
+    `;
+    const uploadResult = await db.query(insertQuery, [
+      req.file.filename,
+      req.file.originalname,
+      req.file.path,
+      req.user.userId
+    ]);
+    const uploadId = uploadResult.rows[0].id;
+
+    processPDFAsync(uploadId, req.file.path, req.user.userId);
+
+    res.status(202).json({
+      upload_id: uploadId,
+      message: 'PDF uploaded successfully. Processing has started.'
+    });
+  } catch (error) {
+    console.error('Error uploading PDF:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/upload/:id/status', authenticateToken, async (req, res) => {
+    try {
+      const result = await db.query(
+        'SELECT * FROM pdf_uploads WHERE id = $1 AND teacher_id = $2',
+        [req.params.id, req.user.userId]
+      );
+      const upload = result.rows[0];
+  
+      if (!upload) {
+        return res.status(404).json({ error: 'Upload not found' });
+      }
+      res.json(upload);
+    } catch (error) {
+      console.error('Error fetching upload status:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.get('/uploads', authenticateToken, async (req, res) => {
+    try {
+      const result = await db.query(
+        'SELECT * FROM pdf_uploads WHERE teacher_id = $1 ORDER BY created_at DESC',
+        [req.user.userId]
+      );
+      res.json(result.rows);
+    } catch (error) {
+      console.error('Error fetching uploads:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
 export default router;

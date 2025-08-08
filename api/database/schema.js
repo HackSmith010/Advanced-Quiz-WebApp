@@ -133,6 +133,24 @@ const createTables = async () => {
       )
     `);
 
+  await client.query(`
+      CREATE TABLE IF NOT EXISTS batches (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(name, teacher_id)
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS student_batches (
+        student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+        batch_id INTEGER NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+        PRIMARY KEY (student_id, batch_id)
+      )
+    `);
+
     console.log('Database tables checked/created successfully');
   } catch (err) {
     console.error('Error creating tables:', err.stack);

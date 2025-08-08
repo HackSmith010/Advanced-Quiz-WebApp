@@ -5,7 +5,6 @@ import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Get all tests for a teacher
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const query = `
@@ -24,9 +23,8 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
-// Create new test
 router.post('/', authenticateToken, async (req, res) => {
-  const client = await db.getClient(); // Get a client from the pool for transaction
+  const client = await db.getClient();
   try {
     const {
       title,
@@ -38,7 +36,7 @@ router.post('/', authenticateToken, async (req, res) => {
     } = req.body;
     const testLink = uuidv4();
 
-    await client.query('BEGIN'); // Start transaction
+    await client.query('BEGIN');
 
     const insertTestQuery = `
       INSERT INTO tests (title, description, teacher_id, duration_minutes, 
@@ -60,7 +58,7 @@ router.post('/', authenticateToken, async (req, res) => {
       await client.query(insertTestQuestionQuery, [testId, question_ids[i], i + 1]);
     }
 
-    await client.query('COMMIT'); // Commit transaction
+    await client.query('COMMIT');
 
     res.status(201).json({
       id: testId,
@@ -69,42 +67,37 @@ router.post('/', authenticateToken, async (req, res) => {
       message: 'Test created successfully'
     });
   } catch (error) {
-    await client.query('ROLLBACK'); // Rollback on error
+    await client.query('ROLLBACK');
     console.error('Error creating test:', error);
     res.status(500).json({ error: 'Internal server error' });
   } finally {
-    client.release(); // Release client back to the pool
+    client.release();
   }
 });
 
-// Get test details
-router.get('/:id', authenticateToken, (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
   try {
-    const test = db.prepare(`
-      SELECT * FROM tests WHERE id = ? AND teacher_id = ?
-    `).get(req.params.id, req.user.userId);
+    const testResult = await db.query(
+      `SELECT * FROM tests WHERE id = $1 AND teacher_id = $2`,
+      [req.params.id, req.user.userId]
+    );
+    const test = testResult.rows[0];
 
     if (!test) {
       return res.status(404).json({ error: 'Test not found' });
     }
 
-    const questions = db.prepare(`
+    const questionsResult = await db.query(`
       SELECT qt.*, tq.question_order
       FROM question_templates qt
       JOIN test_questions tq ON qt.id = tq.question_template_id
-      WHERE tq.test_id = ?
+      WHERE tq.test_id = $1
       ORDER BY tq.question_order
-    `).all(req.params.id);
-
-    const formattedQuestions = questions.map(q => ({
-      ...q,
-      variables: JSON.parse(q.variables),
-      distractor_formulas: JSON.parse(q.distractor_formulas)
-    }));
+    `, [req.params.id]);
 
     res.json({
       ...test,
-      questions: formattedQuestions
+      questions: questionsResult.rows
     });
   } catch (error) {
     console.error('Error fetching test details:', error);
@@ -112,8 +105,7 @@ router.get('/:id', authenticateToken, (req, res) => {
   }
 });
 
-// Update test status
-router.put('/:id/status', authenticateToken, (req, res) => {
+router.put('/:id/status', authenticateToken, async (req, res) => {
   try {
     const { status } = req.body;
     const testId = req.params.id;
@@ -122,14 +114,14 @@ router.put('/:id/status', authenticateToken, (req, res) => {
       return res.status(400).json({ error: 'Invalid status' });
     }
 
-    const stmt = db.prepare(`
+    const query = `
       UPDATE tests 
-      SET status = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND teacher_id = ?
-    `);
-    const result = stmt.run(status, testId, req.user.userId);
+      SET status = $1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2 AND teacher_id = $3
+    `;
+    const result = await db.query(query, [status, testId, req.user.userId]);
 
-    if (result.changes === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Test not found' });
     }
 
@@ -140,18 +132,17 @@ router.put('/:id/status', authenticateToken, (req, res) => {
   }
 });
 
-// Get test results
-router.get('/:id/results', authenticateToken, (req, res) => {
+router.get('/:id/results', authenticateToken, async (req, res) => {
   try {
-    const results = db.prepare(`
+    const query = `
       SELECT ta.*, s.name as student_name, s.roll_number
       FROM test_attempts ta
       LEFT JOIN students s ON ta.student_id = s.id
-      WHERE ta.test_id = ?
+      WHERE ta.test_id = $1
       ORDER BY ta.total_score DESC, ta.end_time ASC
-    `).all(req.params.id);
-
-    res.json(results);
+    `;
+    const result = await db.query(query, [req.params.id]);
+    res.json(result.rows);
   } catch (error) {
     console.error('Error fetching test results:', error);
     res.status(500).json({ error: 'Internal server error' });
