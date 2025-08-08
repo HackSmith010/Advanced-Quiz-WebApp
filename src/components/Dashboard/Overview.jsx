@@ -103,10 +103,6 @@ const Overview = () => {
               <div>
                 <p className="text-sm font-medium text-gray-600">{stat.title}</p>
                 <p className="text-2xl font-bold text-gray-900 mt-2">{stat.value}</p>
-                <div className="flex items-center mt-2">
-                  <TrendingUp className="h-4 w-4 text-green-500 mr-1" />
-                  <span className="text-sm text-green-600">{stat.change}</span>
-                </div>
               </div>
               <div className={`p-3 rounded-full bg-${stat.color}-50`}>
                 <stat.icon className={`h-6 w-6 text-${stat.color}-600`} />

@@ -34,7 +34,7 @@ const Login = () => {
       <div className="max-w-md w-full space-y-8">
         <div className="text-center">
           <div className="flex justify-center mb-4">
-            <img src="/logo.png" alt="WC&S Test Logo" className="h-16 w-auto" />
+            <img src="/logo.png" alt="WC&S Test Logo" className="h-20 w-auto" />
           </div>
           <h2 className="text-3xl font-bold text-gray-900">WC&S Test</h2>
           <p className="mt-2 text-gray-600">Sign in to your teacher account</p>

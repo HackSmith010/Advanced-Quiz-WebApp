@@ -1,46 +1,48 @@
-import React from 'react';
-import { NavLink } from 'react-router-dom';
-import { 
-  Brain, 
-  Home, 
-  Users, 
-  FileQuestion, 
-  ClipboardList, 
+import React from "react";
+import { NavLink } from "react-router-dom";
+import {
+  Brain,
+  Home,
+  Users,
+  FileQuestion,
+  ClipboardList,
   Upload,
-  Box, // New Icon for Batches
-  X
-} from 'lucide-react';
+  Box, 
+  X,
+} from "lucide-react";
 
 const Sidebar = ({ open, setOpen }) => {
   const navigation = [
-    { name: 'Overview', href: '/dashboard/overview', icon: Home },
-    // The "Students" link is removed, as it's now part of Batches
-    { name: 'Batches & Students', href: '/dashboard/batches', icon: Box }, 
-    { name: 'Questions', href: '/dashboard/questions', icon: FileQuestion },
-    { name: 'Tests', href: '/dashboard/tests', icon: ClipboardList },
-    { name: 'Upload PDF', href: '/dashboard/upload', icon: Upload },
+    { name: "Overview", href: "/dashboard/overview", icon: Home },
+    { name: "Batches & Students", href: "/dashboard/batches", icon: Box },
+    { name: "Questions", href: "/dashboard/questions", icon: FileQuestion },
+    { name: "Tests", href: "/dashboard/tests", icon: ClipboardList },
+    { name: "Upload PDF", href: "/dashboard/upload", icon: Upload },
   ];
 
   return (
     <>
-      {/* Mobile overlay */}
       {open && (
-        <div 
+        <div
           className="fixed inset-0 z-40 lg:hidden bg-black bg-opacity-50"
           onClick={() => setOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
-      <div className={`
+      <div
+        className={`
         fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg transform 
-        ${open ? 'translate-x-0' : '-translate-x-full'} 
+        ${open ? "translate-x-0" : "-translate-x-full"} 
         lg:translate-x-0 lg:static lg:inset-0 transition duration-200 ease-in-out
-      `}>
+      `}
+      >
         <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200">
           <div className="flex items-center">
-            <img src="/logo.png" alt="WC&S Test Logo" className="h-8 w-auto" />
-            <span className="ml-2 text-xl font-bold text-gray-900">WC & S Test</span>
+            <img src="/logo.png" alt="Siemens Logo" className="h-10 w-auto" />
+            <div className="ml-3">
+              <p className="text-xs text-gray-500 leading-tight">Siemens Technical Academy</p>
+              <p className="text-base font-bold text-gray-800 leading-tight">WC&S Test</p>
+            </div>
           </div>
           <button
             className="lg:hidden text-gray-500 hover:text-gray-700"
@@ -59,8 +61,8 @@ const Sidebar = ({ open, setOpen }) => {
                 className={({ isActive }) =>
                   `group flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
                     isActive
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                      ? "bg-blue-50 text-blue-700"
+                      : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
                   }`
                 }
               >
