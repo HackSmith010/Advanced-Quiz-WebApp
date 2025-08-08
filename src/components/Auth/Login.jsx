@@ -36,7 +36,7 @@ const Login = () => {
           <div className="flex justify-center mb-4">
             <img src="/logo.png" alt="WC&S Test Logo" className="h-20 w-auto" />
           </div>
-          <p className="text-xs text-gray-500 leading-tight">
+          <p className="text-1xl text-gray-500 leading-tight">
             Siemens Technical Academy
           </p>
 
