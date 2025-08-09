@@ -4,16 +4,13 @@ import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Get all question templates for a teacher
+// This is the simplified version without PDF filtering.
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const query = `
-      SELECT * FROM question_templates 
-      WHERE teacher_id = $1 
-      ORDER BY created_at DESC
-    `;
-    const result = await db.query(query, [req.user.userId]);
-    res.json(result.rows); // No need to parse JSON, it's handled by pg
+    const query = `SELECT * FROM question_templates WHERE teacher_id = $1 ORDER BY created_at DESC`;
+    const params = [req.user.userId];
+    const result = await db.query(query, params);
+    res.json(result.rows);
   } catch (error) {
     console.error('Error fetching questions:', error);
     res.status(500).json({ error: 'Internal server error' });
