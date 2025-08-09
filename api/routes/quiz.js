@@ -1,7 +1,9 @@
 import express from 'express';
 import { db } from '../database/schema.js';
 import { generateQuestionForStudent } from '../utils/questionGenerator.js';
+import { create, all } from 'mathjs';
 
+const math = create(all);
 const router = express.Router();
 
 router.get('/test/:testLink', async (req, res) => {
@@ -83,102 +85,53 @@ router.post('/test/:testLink/start', async (req, res) => {
 });
 
 router.get('/attempt/:attemptId/questions', async (req, res) => {
-  const client = await db.getClient();
   try {
     const { attemptId } = req.params;
 
-    const attemptResult = await client.query(
-      `SELECT ta.*, t.test_link, t.title, t.duration_minutes
+    const attemptResult = await db.query(
+      `SELECT ta.*, t.title, t.duration_minutes 
        FROM test_attempts ta JOIN tests t ON ta.test_id = t.id
        WHERE ta.id = $1 AND ta.status = 'in_progress'`,
       [attemptId]
     );
     const attempt = attemptResult.rows[0];
     if (!attempt) {
-      return res.status(404).json({ error: 'Test attempt not found or already completed' });
+      return res.status(404).json({ error: 'Test attempt not found or already completed.' });
     }
 
-    const templatesResult = await client.query(
-      `SELECT qt.*, tq.question_order FROM question_templates qt
+    const templatesResult = await db.query(
+      `SELECT qt.* FROM question_templates qt
        JOIN test_questions tq ON qt.id = tq.question_template_id
-       WHERE tq.test_id = $1 ORDER BY tq.question_order`,
+       WHERE tq.test_id = $1`,
       [attempt.test_id]
     );
     const questionTemplates = templatesResult.rows;
     
-    await client.query('BEGIN');
-
-    const generatedQuestions = [];
-    for (const [index, template] of questionTemplates.entries()) {
-      const questionData = generateQuestionForStudent(template, attempt.student_roll_number, index);
-      
-      const insertAnswerQuery = `
-        INSERT INTO student_answers 
-        (attempt_id, question_template_id, generated_question, generated_values, correct_answer)
-        VALUES ($1, $2, $3, $4, $5) RETURNING id
-      `;
-      const answerResult = await client.query(insertAnswerQuery, [
-        attemptId, template.id, questionData.question, JSON.stringify(questionData.values), questionData.correctAnswer
-      ]);
-
-      generatedQuestions.push({
-        id: answerResult.rows[0].id,
-        question: questionData.question,
-        options: questionData.options,
-        question_order: template.question_order
-      });
-    }
-
-    await client.query('COMMIT');
+    const generatedQuestions = questionTemplates
+      .map((template, index) => {
+        const questionData = generateQuestionForStudent(template, attempt.student_roll_number, index);
+        if (questionData) {
+          return {
+            templateId: template.id,
+            question: questionData.question,
+            options: questionData.options,
+            correctAnswer: questionData.correctAnswer 
+          };
+        }
+        return null;
+      })
+      .filter(q => q !== null); 
 
     res.json({
       attempt: {
         id: attempt.id,
         title: attempt.title,
-        duration_minutes: attempt.duration_minutes,
-        start_time: attempt.start_time
+        duration_minutes: attempt.duration_minutes
       },
       questions: generatedQuestions
     });
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('Error fetching questions:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  } finally {
-    client.release();
-  }
-});
-
-router.post('/answer/:answerId/submit', async (req, res) => {
-  try {
-    const { student_answer, time_taken } = req.body;
-    const { answerId } = req.params;
-
-    const answerResult = await db.query(`SELECT * FROM student_answers WHERE id = $1`, [answerId]);
-    const answer = answerResult.rows[0];
-    if (!answer) {
-      return res.status(404).json({ error: 'Answer not found' });
-    }
-
-    const testResult = await db.query(
-      `SELECT t.marks_per_question FROM tests t JOIN test_attempts ta ON t.id = ta.test_id JOIN student_answers sa ON ta.id = sa.attempt_id WHERE sa.id = $1`,
-      [answerId]
-    );
-    const marks_per_question = testResult.rows[0].marks_per_question;
-
-    const isCorrect = student_answer === answer.correct_answer;
-    const marksObtained = isCorrect ? marks_per_question : 0;
-
-    const updateQuery = `
-      UPDATE student_answers 
-      SET student_answer = $1, is_correct = $2, marks_obtained = $3, time_taken = $4
-      WHERE id = $5
-    `;
-    await db.query(updateQuery, [student_answer, isCorrect, marksObtained, time_taken, answerId]);
-
-    res.json({ success: true, is_correct: isCorrect });
-  } catch (error) {
-    console.error('Error submitting answer:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -186,23 +139,38 @@ router.post('/answer/:answerId/submit', async (req, res) => {
 router.post('/attempt/:attemptId/submit', async (req, res) => {
   try {
     const { attemptId } = req.params;
+    const { answers } = req.body; 
 
-    const scoreResult = await db.query(
-      `SELECT SUM(marks_obtained) as total_score FROM student_answers WHERE attempt_id = $1`,
-      [attemptId]
+    const attemptResult = await db.query('SELECT * FROM test_attempts WHERE id = $1', [attemptId]);
+    if (attemptResult.rows[0]?.status === 'completed') {
+        return res.status(400).json({ error: 'Test already submitted.' });
+    }
+
+    const testResult = await db.query(
+        `SELECT t.marks_per_question FROM tests t JOIN test_attempts ta ON t.id = ta.test_id WHERE ta.id = $1`,
+        [attemptId]
     );
-    const totalScore = scoreResult.rows[0]?.total_score || 0;
+    const marks_per_question = testResult.rows[0].marks_per_question;
+    
+    let totalScore = 0;
+    for (const templateId in answers) {
+        const studentAnswer = answers[templateId].studentAnswer;
+        const correctAnswer = answers[templateId].correctAnswer;
+        if (studentAnswer === correctAnswer) {
+            totalScore += marks_per_question;
+        }
+    }
 
     const updateQuery = `
       UPDATE test_attempts 
       SET end_time = CURRENT_TIMESTAMP, total_score = $1, status = 'completed'
-      WHERE id = $2
+      WHERE id = $2 RETURNING total_score
     `;
-    await db.query(updateQuery, [totalScore, attemptId]);
+    const finalResult = await db.query(updateQuery, [totalScore, attemptId]);
 
     res.json({ 
       success: true, 
-      total_score: totalScore,
+      total_score: finalResult.rows[0].total_score,
       message: 'Test submitted successfully'
     });
   } catch (error) {

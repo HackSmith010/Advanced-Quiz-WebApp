@@ -1,11 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { FileQuestion, Check, X, Edit, Trash2, Eye } from 'lucide-react';
+import { FileQuestion, Check, X, Edit, Trash2, AlertTriangle } from 'lucide-react';
+
+// Reusable Modal Component
+const Modal = ({ children, onClose }) => (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="bg-white p-6 rounded-lg w-full max-w-2xl relative shadow-xl max-h-[90vh] overflow-y-auto">
+      <button onClick={onClose} className="absolute top-3 right-3 p-1 rounded-full text-gray-500 hover:bg-gray-200">
+        <X size={20} />
+      </button>
+      {children}
+    </div>
+  </div>
+);
 
 const QuestionsManager = () => {
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all'); // all, pending_review, approved, rejected
+  const [actionLoading, setActionLoading] = useState(false);
+  const [filter, setFilter] = useState('all');
+  
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingQuestion, setEditingQuestion] = useState(null);
+  const [formData, setFormData] = useState(null);
 
   useEffect(() => {
     fetchQuestions();
@@ -13,7 +30,6 @@ const QuestionsManager = () => {
 
   const fetchQuestions = async () => {
     try {
-      // MODIFIED: Changed to relative path for Vercel
       const response = await axios.get('/api/questions');
       setQuestions(response.data);
     } catch (error) {
@@ -25,7 +41,6 @@ const QuestionsManager = () => {
 
   const updateQuestionStatus = async (questionId, status) => {
     try {
-      // MODIFIED: Changed to relative path for Vercel
       await axios.put(`/api/questions/${questionId}/status`, { status });
       fetchQuestions();
     } catch (error) {
@@ -33,21 +48,41 @@ const QuestionsManager = () => {
     }
   };
 
-  const deleteQuestion = async (questionId) => {
-    if (window.confirm('Are you sure you want to delete this question?')) {
-      try {
-        // MODIFIED: Changed to relative path for Vercel
-        await axios.delete(`/api/questions/${questionId}`);
+  const handleUpdateQuestion = async (e) => {
+    e.preventDefault();
+    setActionLoading(true);
+    try {
+        const payload = {
+            ...formData,
+            // Ensure variables are stringified if they are edited as text
+            variables: typeof formData.variables === 'string' ? JSON.parse(formData.variables) : formData.variables,
+            distractor_formulas: formData.distractor_formulas.split('\n').filter(f => f.trim() !== '')
+        };
+        await axios.put(`/api/questions/${editingQuestion.id}`, payload);
         fetchQuestions();
-      } catch (error) {
-        console.error('Error deleting question:', error);
-      }
+        setShowEditModal(false);
+    } catch (error) {
+        console.error('Error updating question:', error);
+        alert('Failed to update question. Check console for details.');
+    } finally {
+        setActionLoading(false);
     }
   };
 
-  const filteredQuestions = questions.filter(question => 
-    filter === 'all' || question.status === filter
-  );
+  const openEditModal = (question) => {
+    setEditingQuestion(question);
+    setFormData({
+        question_template: question.question_template,
+        correct_answer_formula: question.correct_answer_formula,
+        distractor_formulas: question.distractor_formulas.join('\n'),
+        category: question.category,
+        // --- FIX: Include variables in the form state ---
+        variables: question.variables 
+    });
+    setShowEditModal(true);
+  };
+
+  const filteredQuestions = questions.filter(q => filter === 'all' || q.status === filter);
 
   const getStatusBadge = (status) => {
     const styles = {
@@ -55,150 +90,103 @@ const QuestionsManager = () => {
       approved: 'bg-green-100 text-green-800',
       rejected: 'bg-red-100 text-red-800'
     };
-    
     return (
       <span className={`px-2 py-1 text-xs font-medium rounded-full ${styles[status]}`}>
-        {status.replace('_', ' ').toUpperCase()}
+        {status.replace(/_/g, ' ').toUpperCase()}
       </span>
     );
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
-
   return (
     <div>
+      {/* Header and Filter Tabs */}
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Questions Bank</h1>
           <p className="text-gray-600 mt-2">Review and manage your question templates</p>
         </div>
       </div>
-
-      {/* Filter Tabs */}
-      <div className="mb-6">
-        <div className="border-b border-gray-200">
+      <div className="mb-6 border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
-            {[
-              { key: 'all', label: 'All Questions', count: questions.length },
-              { key: 'pending_review', label: 'Pending Review', count: questions.filter(q => q.status === 'pending_review').length },
-              { key: 'approved', label: 'Approved', count: questions.filter(q => q.status === 'approved').length },
-              { key: 'rejected', label: 'Rejected', count: questions.filter(q => q.status === 'rejected').length }
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setFilter(tab.key)}
+            {['all', 'pending_review', 'approved', 'rejected'].map((tab) => (
+              <button key={tab} onClick={() => setFilter(tab)}
                 className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
-                  filter === tab.key
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  filter === tab ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
                 }`}
               >
-                {tab.label} ({tab.count})
+                {tab.replace(/_/g, ' ').toUpperCase()} ({questions.filter(q => tab === 'all' || q.status === tab).length})
               </button>
             ))}
           </nav>
-        </div>
       </div>
-
-      {/* Questions List */}
+      
       <div className="space-y-6">
-        {filteredQuestions.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
-            <FileQuestion className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No Questions Found</h3>
-            <p className="text-gray-600">Upload a PDF to get started with question extraction.</p>
-          </div>
-        ) : (
-          filteredQuestions.map((question) => (
-            <div key={question.id} className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow">
-              <div className="flex justify-between items-start mb-4">
+        {filteredQuestions.map((question) => (
+          <div key={question.id} className="bg-white rounded-xl border p-6">
+            <div className="flex justify-between items-start mb-4">
                 <div className="flex-1">
                   <div className="flex items-center space-x-3 mb-2">
                     {getStatusBadge(question.status)}
                     <span className="text-sm text-gray-500">{question.category}</span>
                   </div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">
-                    {question.question_template}
-                  </h3>
-                  <p className="text-sm text-gray-600 mb-3">
-                    <strong>Original:</strong> {question.original_text}
-                  </p>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">{question.question_template}</h3>
+                  <p className="text-sm text-gray-600 mb-3"><strong>Original:</strong> {question.original_text}</p>
                 </div>
-              </div>
-
-              {/* Variables */}
-              <div className="mb-4">
-                <h4 className="text-sm font-medium text-gray-700 mb-2">Variables:</h4>
-                <div className="flex flex-wrap gap-2">
-                  {question.variables.map((variable, index) => (
-                    <span
-                      key={index}
-                      className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-sm"
-                    >
-                      {variable.name}: {variable.value} {variable.unit}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              {/* Formula */}
-              <div className="mb-4">
-                <h4 className="text-sm font-medium text-gray-700 mb-1">Formula:</h4>
-                <code className="bg-gray-100 px-2 py-1 rounded text-sm">
-                  {question.correct_answer_formula}
-                </code>
-              </div>
-
-              {/* Actions */}
-              <div className="flex justify-between items-center pt-4 border-t border-gray-200">
-                <div className="text-xs text-gray-500">
-                  Created: {new Date(question.created_at).toLocaleDateString()}
-                </div>
-                
-                <div className="flex space-x-2">
-                  {question.status === 'pending_review' && (
-                    <>
-                      <button
-                        onClick={() => updateQuestionStatus(question.id, 'approved')}
-                        className="flex items-center space-x-1 px-3 py-1 text-green-600 hover:bg-green-50 rounded transition-colors"
-                      >
-                        <Check className="h-4 w-4" />
-                        <span>Approve</span>
-                      </button>
-                      <button
-                        onClick={() => updateQuestionStatus(question.id, 'rejected')}
-                        className="flex items-center space-x-1 px-3 py-1 text-red-600 hover:bg-red-50 rounded transition-colors"
-                      >
-                        <X className="h-4 w-4" />
-                        <span>Reject</span>
-                      </button>
-                    </>
-                  )}
-                  
-                  <button className="flex items-center space-x-1 px-3 py-1 text-blue-600 hover:bg-blue-50 rounded transition-colors">
-                    <Edit className="h-4 w-4" />
-                    <span>Edit</span>
-                  </button>
-                  
-                  <button
-                    onClick={() => deleteQuestion(question.id)}
-                    className="flex items-center space-x-1 px-3 py-1 text-red-600 hover:bg-red-50 rounded transition-colors"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    <span>Delete</span>
-                  </button>
-                </div>
-              </div>
             </div>
-          ))
-        )}
+            <div className="flex justify-end space-x-2">
+                {question.status !== 'approved' && (
+                    <button onClick={() => updateQuestionStatus(question.id, 'approved')} className="flex items-center text-green-600 hover:bg-green-50 p-2 rounded"><Check className="h-4 w-4 mr-1" /> Approve</button>
+                )}
+                {question.status !== 'rejected' && (
+                    <button onClick={() => updateQuestionStatus(question.id, 'rejected')} className="flex items-center text-orange-600 hover:bg-orange-50 p-2 rounded"><X className="h-4 w-4 mr-1" /> Reject</button>
+                )}
+                <button onClick={() => openEditModal(question)} className="flex items-center text-blue-600 hover:bg-blue-50 p-2 rounded"><Edit className="h-4 w-4 mr-1" /> Edit</button>
+                <button className="flex items-center text-red-600 hover:bg-red-50 p-2 rounded"><Trash2 className="h-4 w-4 mr-1" /> Delete</button>
+            </div>
+          </div>
+        ))}
       </div>
+
+      {showEditModal && formData && (
+        <Modal onClose={() => setShowEditModal(false)}>
+            <h2 className="text-xl font-semibold mb-4">Edit Question Template</h2>
+            <form onSubmit={handleUpdateQuestion} className="space-y-4">
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Question Template</label>
+                    <textarea value={formData.question_template} onChange={(e) => setFormData({...formData, question_template: e.target.value})}
+                              rows="3" className="w-full p-2 border rounded-lg font-mono text-sm"/>
+                </div>
+                {/* --- NEW: Display for variables --- */}
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Variables (Read-only)</label>
+                    <textarea value={JSON.stringify(formData.variables, null, 2)}
+                              readOnly
+                              rows="4" className="w-full p-2 border rounded-lg bg-gray-100 font-mono text-sm"/>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Correct Answer Formula</label>
+                    <input type="text" value={formData.correct_answer_formula} onChange={(e) => setFormData({...formData, correct_answer_formula: e.target.value})}
+                           className="w-full p-2 border rounded-lg font-mono text-sm"/>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Distractor Formulas (one per line)</label>
+                    <textarea value={formData.distractor_formulas} onChange={(e) => setFormData({...formData, distractor_formulas: e.target.value})}
+                              rows="3" className="w-full p-2 border rounded-lg font-mono text-sm"/>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                    <input type="text" value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})}
+                           className="w-full p-2 border rounded-lg"/>
+                </div>
+                <div className="flex justify-end space-x-2">
+                    <button type="button" onClick={() => setShowEditModal(false)} className="px-4 py-2 rounded-lg border">Cancel</button>
+                    <button type="submit" disabled={actionLoading} className="px-4 py-2 rounded-lg bg-blue-600 text-white">
+                        {actionLoading ? 'Saving...' : 'Save Changes'}
+                    </button>
+                </div>
+            </form>
+        </Modal>
+      )}
     </div>
   );
 };
