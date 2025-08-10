@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express, { json, urlencoded } from 'express';
 import cors from 'cors';
-import path, { join } from 'path';
+import { join } from 'path';
 
 import { createTables } from './database/schema.js';
 
@@ -17,6 +17,10 @@ import subjectRoutes from './routes/subjects.js';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Detect if running in Netlify Functions
+const isServerless = process.env.NETLIFY === 'true';
+const routePrefix = isServerless ? '' : '/api';
+
 async function startServer() {
   await createTables();
 
@@ -27,16 +31,17 @@ async function startServer() {
   const rootDir = process.cwd();
   app.use('/uploads', express.static(join(rootDir, 'uploads')));
 
-  app.use('/api/auth', authRoutes.default || authRoutes);
-  app.use('/api/students', studentRoutes.default || studentRoutes);
-  app.use('/api/batches', batchRoutes.default || batchRoutes);
-  app.use('/api/questions', questionRoutes.default || questionRoutes);
-  app.use('/api/tests', testRoutes.default || testRoutes);
-  app.use('/api/quiz', quizRoutes.default || quizRoutes);
-  app.use('/api/pdf', pdfRoutes.default || pdfRoutes);
-  app.use('/api/subjects', subjectRoutes.default || subjectRoutes);
+  // Use dynamic prefix so it works locally and on Netlify
+  app.use(`${routePrefix}/auth`, authRoutes.default || authRoutes);
+  app.use(`${routePrefix}/students`, studentRoutes.default || studentRoutes);
+  app.use(`${routePrefix}/batches`, batchRoutes.default || batchRoutes);
+  app.use(`${routePrefix}/questions`, questionRoutes.default || questionRoutes);
+  app.use(`${routePrefix}/tests`, testRoutes.default || testRoutes);
+  app.use(`${routePrefix}/quiz`, quizRoutes.default || quizRoutes);
+  app.use(`${routePrefix}/pdf`, pdfRoutes.default || pdfRoutes);
+  app.use(`${routePrefix}/subjects`, subjectRoutes.default || subjectRoutes);
 
-  app.get('/api/health', (req, res) => {
+  app.get(`${routePrefix}/health`, (req, res) => {
     res.json({ status: 'OK', message: 'IntelliQuiz AI API is running' });
   });
 
@@ -45,7 +50,7 @@ async function startServer() {
     res.status(500).json({ error: 'Internal server error' });
   });
 
-  if (process.env.NODE_ENV !== 'production') {
+  if (!isServerless) {
     app.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
