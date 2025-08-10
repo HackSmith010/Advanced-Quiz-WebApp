@@ -41,10 +41,6 @@ const createTables = async () => {
       )
     `);
     
-<<<<<<< HEAD
-=======
-    // Batches tables
->>>>>>> c3a3118 (question generation working)
     await client.query(`
       CREATE TABLE IF NOT EXISTS batches (
         id SERIAL PRIMARY KEY,
@@ -63,10 +59,6 @@ const createTables = async () => {
       )
     `);
 
-<<<<<<< HEAD
-=======
-    // Question templates table (without pdf_upload_id)
->>>>>>> c3a3118 (question generation working)
     await client.query(`
       CREATE TABLE IF NOT EXISTS question_templates (
         id SERIAL PRIMARY KEY,
@@ -82,10 +74,6 @@ const createTables = async () => {
       )
     `);
 
-<<<<<<< HEAD
-=======
-    // Tests & Test Questions tables
->>>>>>> c3a3118 (question generation working)
     await client.query(`
       CREATE TABLE IF NOT EXISTS tests (
         id SERIAL PRIMARY KEY,
@@ -107,10 +95,6 @@ const createTables = async () => {
       )
     `);
 
-<<<<<<< HEAD
-=======
-    // Test attempts table
->>>>>>> c3a3118 (question generation working)
     await client.query(`
       CREATE TABLE IF NOT EXISTS test_attempts (
         id SERIAL PRIMARY KEY,
