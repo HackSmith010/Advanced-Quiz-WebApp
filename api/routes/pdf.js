@@ -8,16 +8,13 @@ import { authenticateToken } from '../middleware/auth.js';
 import { processQuestionsWithAI } from '../utils/aiProcessor.js';
 
 const router = express.Router();
-// Use memory storage as we don't need to save the file long-term
 const upload = multer({ storage: multer.memoryStorage() });
 
-// This is the main background processing function.
 async function processPDFAsync(pdfBuffer, teacherId) {
   let totalValidTemplates = 0;
   try {
     const pagesText = [];
 
-    // Use pdf-parse with an option to render pages individually
     await pdfParse(pdfBuffer, {
       pagerender: (pageData) => {
         return pageData.getTextContent({ normalizeWhitespace: true })
@@ -27,7 +24,6 @@ async function processPDFAsync(pdfBuffer, teacherId) {
       }
     });
 
-    // Process each page's text one by one
     for (let i = 0; i < pagesText.length; i++) {
       const pageText = pagesText[i];
       console.log(`Processing Page ${i + 1} of ${pagesText.length}...`);
@@ -71,7 +67,6 @@ async function processPDFAsync(pdfBuffer, teacherId) {
           console.error(`AI processing failed for page ${i + 1}. Continuing to next page. Error:`, aiError.message);
         }
 
-        // Wait before the next API call to respect rate limits
         if (i < pagesText.length - 1) {
             console.log('Waiting for 5 seconds to respect API rate limits...');
             await new Promise(resolve => setTimeout(resolve, 5000));
@@ -80,21 +75,18 @@ async function processPDFAsync(pdfBuffer, teacherId) {
     }
     
     console.log(`AI processing complete. Found ${totalValidTemplates} total valid questions.`);
-    // NOTE: We no longer update a separate upload status table in this version.
 
   } catch (error) {
     console.error('An unexpected error occurred during PDF processing:', error);
   }
 }
 
-// --- API Routes ---
 router.post('/upload', authenticateToken, upload.single('pdf'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No PDF file uploaded.' });
     }
 
-    // Start the background process without waiting for it to finish
     processPDFAsync(req.file.buffer, req.user.userId);
 
     res.status(202).json({

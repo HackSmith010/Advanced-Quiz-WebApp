@@ -1,11 +1,23 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { Upload, FileText, Check, X, Clock, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  Upload,
+  FileText,
+  AlertCircle,
+  Loader2,
+  CheckCircle,
+  ChevronRight
+} from "lucide-react";
 
 const PDFUpload = () => {
   const [uploads, setUploads] = useState([]);
+  const [file, setFile] = useState(null);
+  const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
-  const [dragActive, setDragActive] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchUploads();
@@ -13,224 +25,204 @@ const PDFUpload = () => {
 
   const fetchUploads = async () => {
     try {
-      // MODIFIED: Changed to relative path for Vercel
-      const response = await axios.get('/api/pdf/uploads');
+      const response = await axios.get("/api/pdf/uploads");
       setUploads(response.data);
     } catch (error) {
-      console.error('Error fetching uploads:', error);
+      console.error("Error fetching uploads:", error);
     }
   };
 
-  const handleFileUpload = async (file) => {
-    if (!file || file.type !== 'application/pdf') {
-      alert('Please select a PDF file.');
+  const handleFileSelect = (selectedFile) => {
+    if (selectedFile && selectedFile.type === "application/pdf") {
+      setFile(selectedFile);
+      setDisplayName(selectedFile.name.replace(/\.pdf$/i, ""));
+    }
+  };
+
+  const handleUpload = async (e) => {
+    e.preventDefault();
+    if (!file || !displayName) {
+      setError("Please select a file and provide a display name.");
       return;
     }
-
-    if (file.size > 10 * 1024 * 1024) {
-      alert('File size must be less than 10MB.');
-      return;
-    }
-
     setLoading(true);
+    setError("");
+    setMessage("");
     const formData = new FormData();
-    formData.append('pdf', file);
+    formData.append("pdf", file);
+    formData.append("displayName", displayName);
 
     try {
-      // MODIFIED: Changed to relative path for Vercel
-      await axios.post('/api/pdf/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      
+      const response = await axios.post("/api/pdf/upload", formData);
+      setMessage(response.data.message);
+      setFile(null);
+      setDisplayName("");
       fetchUploads();
-      alert('PDF uploaded successfully! Processing will begin shortly.');
-    } catch (error) {
-      console.error('Error uploading PDF:', error);
-      alert('Error uploading PDF. Please try again.');
+    } catch (err) {
+      console.error("Error uploading PDF:", err);
+      setError(err.response?.data?.error || "Upload failed. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDrag = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setDragActive(true);
-    } else if (e.type === 'dragleave') {
-      setDragActive(false);
-    }
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFileUpload(e.dataTransfer.files[0]);
-    }
-  };
-
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'pending':
-        return <Clock className="h-5 w-5 text-gray-500" />;
-      case 'processing':
-        return <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>;
-      case 'completed':
-        return <Check className="h-5 w-5 text-green-500" />;
-      case 'failed':
-        return <X className="h-5 w-5 text-red-500" />;
-      default:
-        return <AlertCircle className="h-5 w-5 text-gray-500" />;
-    }
-  };
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'pending':
-        return 'bg-gray-100 text-gray-800';
-      case 'processing':
-        return 'bg-blue-100 text-blue-800';
-      case 'completed':
-        return 'bg-green-100 text-green-800';
-      case 'failed':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
+  const handleReusePdf = (uploadId) => {
+    navigate(`/dashboard/questions?pdfId=${uploadId}`);
   };
 
   return (
-    <div>
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">PDF Question Extraction</h1>
-        <p className="text-gray-600 mt-2">Upload PDF documents to automatically extract and parse questions</p>
+    <div className="p-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-siemens-secondary">
+          PDF Management
+        </h1>
+        <p className="text-siemens-secondary-light">
+          Upload documents to generate questions
+        </p>
       </div>
 
-      {/* Upload Area */}
-      <div className="mb-8">
-        <div
-          className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
-            dragActive
-              ? 'border-blue-500 bg-blue-50'
-              : 'border-gray-300 hover:border-gray-400'
-          }`}
-          onDragEnter={handleDrag}
-          onDragLeave={handleDrag}
-          onDragOver={handleDrag}
-          onDrop={handleDrop}
-        >
-          <input
-            type="file"
-            accept=".pdf"
-            onChange={(e) => e.target.files[0] && handleFileUpload(e.target.files[0])}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            disabled={loading}
-          />
-          
-          <div className="space-y-4">
-            <div className="flex justify-center">
-              <Upload className="h-12 w-12 text-gray-400" />
-            </div>
-            <div>
-              <h3 className="text-lg font-medium text-gray-900">
-                {loading ? 'Uploading...' : 'Upload PDF Document'}
-              </h3>
-              <p className="text-gray-600 mt-1">
-                Drag and drop your PDF here, or click to browse
+      {/* Upload Form */}
+      <div className="bg-white rounded-xl shadow-sm border border-siemens-primary-light p-6 mb-8">
+        <h2 className="text-lg font-semibold text-siemens-secondary mb-4">
+          Upload New Document
+        </h2>
+
+        <form onSubmit={handleUpload} className="space-y-5">
+          <div>
+            <label className="block text-sm font-medium text-siemens-secondary mb-2">
+              Select PDF File
+            </label>
+            <label
+              htmlFor="pdf-upload"
+              className={`block border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${
+                file
+                  ? "border-siemens-primary bg-siemens-primary-5"
+                  : "border-siemens-primary-light hover:border-siemens-primary"
+              }`}
+            >
+              <input
+                type="file"
+                accept=".pdf"
+                onChange={(e) => handleFileSelect(e.target.files[0])}
+                className="hidden"
+                id="pdf-upload"
+              />
+              <Upload
+                className={`h-10 w-10 mx-auto mb-2 ${
+                  file ? "text-siemens-primary" : "text-siemens-secondary-light"
+                }`}
+              />
+              <p
+                className={`text-sm ${
+                  file
+                    ? "text-siemens-primary font-medium"
+                    : "text-siemens-secondary-light"
+                }`}
+              >
+                {file ? file.name : "Click to browse or drag & drop"}
               </p>
-              <p className="text-sm text-gray-500 mt-2">
-                Maximum file size: 10MB
-              </p>
-            </div>
-            {loading && (
-              <div className="flex justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              </div>
+            </label>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-siemens-secondary mb-2">
+              Document Name
+            </label>
+            <input
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              className="w-full px-3 py-2 border border-siemens-primary-light rounded-lg focus:ring-2 focus:ring-siemens-primary focus:border-transparent"
+              placeholder="e.g., Chapter 5 - Percentages"
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading || !file || !displayName}
+            className={`w-full py-3 rounded-lg text-white font-medium flex items-center justify-center ${
+              loading || !file || !displayName
+                ? "bg-siemens-primary-light cursor-not-allowed"
+                : "bg-siemens-primary hover:bg-siemens-primary-dark"
+            }`}
+          >
+            {loading ? (
+              <>
+                <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                Processing...
+              </>
+            ) : (
+              <>
+                <Upload className="h-5 w-5 mr-2" />
+                Upload and Generate Questions
+              </>
             )}
-          </div>
-        </div>
-      </div>
+          </button>
 
-      {/* How it works
-      <div className="bg-blue-50 rounded-xl p-6 mb-8">
-        <h2 className="text-lg font-semibold text-blue-900 mb-3">How AI Processing Works</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-          <div className="flex items-start space-x-2">
-            <div className="bg-blue-100 rounded-full p-1 mt-0.5">
-              <span className="text-blue-600 font-bold text-xs">1</span>
+          {error && (
+            <div className="bg-error-50 border border-error text-error px-4 py-3 rounded-lg flex items-center">
+              <AlertCircle className="h-5 w-5 mr-2" />
+              {error}
             </div>
-            <div>
-              <p className="font-medium text-blue-900">Extract Text</p>
-              <p className="text-blue-700">OCR technology reads your PDF content</p>
+          )}
+
+          {message && (
+            <div className="bg-success-50 border border-success text-success px-4 py-3 rounded-lg flex items-center">
+              <CheckCircle className="h-5 w-5 mr-2" />
+              {message}
             </div>
-          </div>
-          <div className="flex items-start space-x-2">
-            <div className="bg-blue-100 rounded-full p-1 mt-0.5">
-              <span className="text-blue-600 font-bold text-xs">2</span>
-            </div>
-            <div>
-              <p className="font-medium text-blue-900">Identify Questions</p>
-              <p className="text-blue-700">AI parses and identifies individual questions</p>
-            </div>
-          </div>
-          <div className="flex items-start space-x-2">
-            <div className="bg-blue-100 rounded-full p-1 mt-0.5">
-              <span className="text-blue-600 font-bold text-xs">3</span>
-            </div>
-            <div>
-              <p className="font-medium text-blue-900">Create Templates</p>
-              <p className="text-blue-700">Converts to dynamic question templates</p>
-            </div>
-          </div>
-        </div>
-      </div> */}
+          )}
+        </form>
+      </div>
 
       {/* Upload History */}
-      <div className="bg-white rounded-xl border border-gray-200">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Upload History</h2>
+      <div className="bg-white rounded-xl shadow-sm border border-siemens-primary-light">
+        <div className="px-6 py-4 border-b border-siemens-primary-light">
+          <h2 className="text-lg font-semibold text-siemens-secondary">
+            Document History
+          </h2>
+          <p className="text-sm text-siemens-secondary-light">
+            Click on a document to view or manage its questions
+          </p>
         </div>
-        
-        <div className="divide-y divide-gray-200">
+
+        <div className="divide-y divide-siemens-primary-light">
           {uploads.length === 0 ? (
             <div className="text-center py-12">
-              <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">No uploads yet. Upload your first PDF to get started.</p>
+              <FileText className="h-12 w-12 text-siemens-secondary-light mx-auto mb-4" />
+              <p className="text-siemens-secondary-light">No documents found</p>
+              <p className="text-sm text-siemens-secondary-light mt-1">
+                Upload your first PDF to get started
+              </p>
             </div>
           ) : (
             uploads.map((upload) => (
-              <div key={upload.id} className="px-6 py-4 hover:bg-gray-50 transition-colors">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <FileText className="h-8 w-8 text-blue-600" />
-                    <div>
-                      <h3 className="font-medium text-gray-900">{upload.original_name}</h3>
-                      <p className="text-sm text-gray-600">{upload.filename}</p>
-                    </div>
+              <div
+                key={upload.id}
+                onClick={() => handleReusePdf(upload.id)}
+                className="px-6 py-4 hover:bg-siemens-primary-5 transition-colors cursor-pointer"
+              >
+                <div className="flex items-center space-x-4">
+                  <div className="p-3 rounded-lg bg-siemens-primary-10">
+                    <FileText className="h-6 w-6 text-siemens-primary" />
                   </div>
-                  
-                  <div className="flex items-center space-x-4">
-                    <div className="text-right">
-                      <p className="text-sm font-medium text-gray-900">
-                        {upload.questions_extracted} questions extracted
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-medium text-siemens-secondary truncate">
+                      {upload.display_name}
+                    </h3>
+                    <div className="flex flex-wrap gap-x-4 mt-1">
+                      <p className="text-xs text-siemens-secondary-light">
+                        <span className="font-medium">Original:</span>{" "}
+                        {upload.original_name}
                       </p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-siemens-secondary-light">
+                        <span className="font-medium">Uploaded:</span>{" "}
                         {new Date(upload.created_at).toLocaleDateString()}
                       </p>
                     </div>
-                    
-                    <div className="flex items-center space-x-2">
-                      {getStatusIcon(upload.processing_status)}
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(upload.processing_status)}`}>
-                        {upload.processing_status.toUpperCase()}
-                      </span>
-                    </div>
                   </div>
+                  <ChevronRight className="h-5 w-5 text-siemens-secondary-light" />
                 </div>
               </div>
             ))

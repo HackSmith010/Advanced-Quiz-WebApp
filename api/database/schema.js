@@ -1,11 +1,11 @@
-import pg from 'pg';
+import pg from "pg";
 
 const { Pool } = pg;
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
-    rejectUnauthorized: false
-  }
+    rejectUnauthorized: false,
+  },
 });
 
 const db = {
@@ -39,7 +39,7 @@ const createTables = async () => {
         UNIQUE(roll_number, teacher_id)
       )
     `);
-    
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS batches (
         id SERIAL PRIMARY KEY,
@@ -59,6 +59,26 @@ const createTables = async () => {
     `);
 
     await client.query(`
+      CREATE TABLE IF NOT EXISTS pdf_uploads (
+        id SERIAL PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        original_name TEXT NOT NULL,
+        teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS subjects (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(name, teacher_id)
+      )
+    `);
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS question_templates (
         id SERIAL PRIMARY KEY,
         original_text TEXT NOT NULL,
@@ -69,6 +89,7 @@ const createTables = async () => {
         category TEXT,
         status TEXT DEFAULT 'pending_review',
         teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        subject_id INTEGER REFERENCES subjects(id) ON DELETE SET NULL, -- New foreign key
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -82,6 +103,7 @@ const createTables = async () => {
         duration_minutes INTEGER DEFAULT 60,
         marks_per_question INTEGER DEFAULT 1,
         test_link TEXT UNIQUE NOT NULL,
+        status TEXT DEFAULT 'draft', -- Re-added for test lifecycle
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -108,9 +130,9 @@ const createTables = async () => {
       )
     `);
 
-    console.log('Database tables checked/created successfully');
+    console.log("Database tables checked/created successfully");
   } catch (err) {
-    console.error('Error creating tables:', err.stack);
+    console.error("Error creating tables:", err.stack);
   } finally {
     client.release();
   }

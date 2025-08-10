@@ -20,7 +20,6 @@ export const AuthProvider = ({ children }) => {
     const token = localStorage.getItem("token");
     if (token) {
       axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-      // Verify token is still valid
       verifyToken();
     } else {
       setLoading(false);
@@ -29,7 +28,6 @@ export const AuthProvider = ({ children }) => {
 
   const verifyToken = async () => {
     try {
-      // You could add a verify endpoint to check if token is still valid
       const storedUser = localStorage.getItem("user");
       if (storedUser) {
         setUser(JSON.parse(storedUser));
@@ -44,7 +42,6 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      // MODIFIED: Changed to relative path for Vercel
       const response = await axios.post("/api/auth/login", {
         email,
         password,
