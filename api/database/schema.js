@@ -1,20 +1,46 @@
 import pg from "pg";
+import dns from "dns";
+
+dns.setDefaultResultOrder("ipv4first"); // Avoid IPv6 handshake problems
 
 const { Pool } = pg;
+
+// Create the pool
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false,
-  },
+  ssl: { rejectUnauthorized: false },
 });
 
+// DB helper
 const db = {
   query: (text, params) => pool.query(text, params),
   getClient: () => pool.connect(),
 };
 
+// Retry DB connection on cold start
+async function connectWithRetry(retries = 3, delayMs = 1000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const client = await pool.connect();
+      client.release();
+      console.log(`✅ Database connection established (attempt ${i + 1})`);
+      return;
+    } catch (err) {
+      console.error(
+        `❌ Database connection failed (attempt ${i + 1}):`,
+        err.message
+      );
+      if (i === retries - 1) throw err;
+      await new Promise((res) => setTimeout(res, delayMs));
+    }
+  }
+}
+
+// Table creation
 const createTables = async () => {
+  await connectWithRetry(); // Ensure DB is reachable before creating tables
   const client = await pool.connect();
+
   try {
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -23,7 +49,7 @@ const createTables = async () => {
         password TEXT NOT NULL,
         name TEXT NOT NULL,
         role TEXT DEFAULT 'teacher',
-        status TEXT DEFAULT 'pending', -- Can be 'pending' or 'approved'
+        status TEXT DEFAULT 'pending',
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -89,7 +115,7 @@ const createTables = async () => {
         category TEXT,
         status TEXT DEFAULT 'pending_review',
         teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        subject_id INTEGER REFERENCES subjects(id) ON DELETE SET NULL, -- New foreign key
+        subject_id INTEGER REFERENCES subjects(id) ON DELETE SET NULL,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -103,7 +129,7 @@ const createTables = async () => {
         duration_minutes INTEGER DEFAULT 60,
         marks_per_question INTEGER DEFAULT 1,
         test_link TEXT UNIQUE NOT NULL,
-        status TEXT DEFAULT 'draft', -- Re-added for test lifecycle
+        status TEXT DEFAULT 'draft',
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -130,9 +156,9 @@ const createTables = async () => {
       )
     `);
 
-    console.log("Database tables checked/created successfully");
+    console.log("✅ Database tables checked/created successfully");
   } catch (err) {
-    console.error("Error creating tables:", err.stack);
+    console.error("❌ Error creating tables:", err.stack);
   } finally {
     client.release();
   }
