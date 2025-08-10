@@ -4,8 +4,9 @@
   functions = "netlify/functions"
 
 [[redirects]]
+  # Keep the /api prefix for backend routes
   from = "/api/*"
-  to = "/.netlify/functions/api/:splat"
+  to = "/.netlify/functions/api/api/:splat"
   status = 200
 
 [[redirects]]

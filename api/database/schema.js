@@ -1,23 +1,21 @@
+// database/schema.js
 import pg from "pg";
 import dns from "dns";
 
-dns.setDefaultResultOrder("ipv4first"); // Avoid IPv6 handshake problems
+dns.setDefaultResultOrder("ipv4first");
 
 const { Pool } = pg;
 
-// Create the pool
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: { rejectUnauthorized: false }, 
 });
 
-// DB helper
 const db = {
   query: (text, params) => pool.query(text, params),
   getClient: () => pool.connect(),
 };
 
-// Retry DB connection on cold start
 async function connectWithRetry(retries = 3, delayMs = 1000) {
   for (let i = 0; i < retries; i++) {
     try {
@@ -36,9 +34,8 @@ async function connectWithRetry(retries = 3, delayMs = 1000) {
   }
 }
 
-// Table creation
 const createTables = async () => {
-  await connectWithRetry(); // Ensure DB is reachable before creating tables
+  await connectWithRetry(); 
   const client = await pool.connect();
 
   try {
@@ -49,7 +46,7 @@ const createTables = async () => {
         password TEXT NOT NULL,
         name TEXT NOT NULL,
         role TEXT DEFAULT 'teacher',
-        status TEXT DEFAULT 'pending',
+        status TEXT DEFAULT 'pending', -- pending | approved
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       )
     `);
