@@ -56,10 +56,10 @@ const Login = () => {
               }}
             />
           </div>
-          <h1 className="text-2xl font-bold text-siemens-secondary">
+          <h1 className="text-2xl font text-siemens-secondary">
             Siemens Technical Academy
           </h1>
-          <h2 className="text-xl mt-2 text-siemens-primary">
+          <h2 className="text-xl font-bold mt-2 text-siemens-primary">
             WC&S Test Platform
           </h2>
         </div>
