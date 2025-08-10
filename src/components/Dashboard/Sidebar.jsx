@@ -1,14 +1,13 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
 import {
-  Brain,
   Home,
-  Users,
+  Box,
   FileQuestion,
   ClipboardList,
   Upload,
-  Box, 
   X,
+  UserCog,
 } from "lucide-react";
 
 const Sidebar = ({ open, setOpen }) => {
@@ -18,6 +17,7 @@ const Sidebar = ({ open, setOpen }) => {
     { name: "Questions", href: "/dashboard/questions", icon: FileQuestion },
     { name: "Tests", href: "/dashboard/tests", icon: ClipboardList },
     { name: "Upload PDF", href: "/dashboard/upload", icon: Upload },
+    { name: "User Management", href: "/dashboard/users", icon: UserCog },
   ];
 
   return (
@@ -28,30 +28,39 @@ const Sidebar = ({ open, setOpen }) => {
           onClick={() => setOpen(false)}
         />
       )}
-
       <div
-        className={`
-        fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg transform 
-        ${open ? "translate-x-0" : "-translate-x-full"} 
-        lg:translate-x-0 lg:static lg:inset-0 transition duration-200 ease-in-out
-      `}
+        className={`fixed inset-y-0 left-0 z-50 w-68 bg-white shadow-lg transform ${
+          open ? "translate-x-0" : "-translate-x-full"
+        } lg:translate-x-0 lg:static lg:inset-0 transition duration-200 ease-in-out border-r border-siemens-primary-light`}
       >
-        <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200">
-          <div className="flex items-center">
-            <img src="/logo.png" alt="Siemens Logo" className="h-10 w-auto" />
-            <div className="ml-3">
-              <p className="text-xs text-gray-500 leading-tight">Siemens Technical Academy</p>
-              <p className="text-base font-bold text-gray-800 leading-tight">WC&S Test</p>
+        <div className="flex items-center justify-between h-20 px-6 border-b border-siemens-primary-light">
+          <div className="flex items-center space-x-3">
+            <img
+              src="/logo.png"
+              alt="Siemens Logo"
+              className="h-12 w-auto"
+              onError={(e) => {
+                e.target.onerror = null;
+                e.target.src =
+                  "https://assets.new.siemens.com/siemens/assets/api/uuid:9d0e7b8b5c6b4e3d8e9f7a6b5c4d3e2f/width:1125/quality:high/logo-siemens.png";
+              }}
+            />
+            <div className="min-w-0">
+              <p className="text-xs text-siemens-secondary-light truncate">
+                Siemens Technical Academy
+              </p>
+              <p className="text-sm font-medium text-siemens-secondary truncate">
+                WC&S Test Platform
+              </p>
             </div>
           </div>
           <button
-            className="lg:hidden text-gray-500 hover:text-gray-700"
+            className="lg:hidden text-siemens-secondary-light hover:text-siemens-primary"
             onClick={() => setOpen(false)}
           >
             <X className="h-6 w-6" />
           </button>
         </div>
-
         <nav className="mt-6">
           <div className="px-3 space-y-1">
             {navigation.map((item) => (
@@ -59,15 +68,25 @@ const Sidebar = ({ open, setOpen }) => {
                 key={item.name}
                 to={item.href}
                 className={({ isActive }) =>
-                  `group flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  `group flex items-center px-3 py-3 text-sm font-medium rounded-lg mx-2 transition-colors ${
                     isActive
-                      ? "bg-blue-50 text-blue-700"
-                      : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+                      ? "bg-siemens-primary-50 text-siemens-primary"
+                      : "text-siemens-secondary-light hover:bg-siemens-primary-50 hover:text-siemens-primary"
                   }`
                 }
               >
-                <item.icon className="mr-3 h-5 w-5" />
-                {item.name}
+                {({ isActive }) => (
+                  <>
+                    <item.icon
+                      className={`mr-3 h-5 w-5 ${
+                        isActive
+                          ? "text-siemens-primary"
+                          : "text-siemens-secondary-light group-hover:text-siemens-primary"
+                      }`}
+                    />
+                    {item.name}
+                  </>
+                )}
               </NavLink>
             ))}
           </div>

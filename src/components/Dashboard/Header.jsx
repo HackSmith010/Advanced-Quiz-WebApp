@@ -1,107 +1,100 @@
-import React, { useState } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
-import { Menu, LogOut, User, AlertTriangle, X } from 'lucide-react';
+import React, { useState } from "react";
+import { useAuth } from "../../contexts/AuthContext";
+import { Menu, LogOut, User, AlertTriangle } from "lucide-react";
 
-// A simple, reusable modal component
-const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, children }) => {
+const ConfirmationModal = ({ isOpen, onClose, onConfirm }) => {
   if (!isOpen) return null;
-
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl p-6 w-full max-w-sm shadow-xl">
-        <div className="flex items-start">
-          <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
-            <AlertTriangle className="h-6 w-6 text-red-600" aria-hidden="true" />
+      <div className="bg-white rounded-xl p-6 w-full max-w-sm shadow-xl border border-siemens-primary-light">
+        <div className="flex flex-col items-center text-center">
+          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+            <AlertTriangle className="h-6 w-6 text-siemens-error" />
           </div>
-          <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-            <h3 className="text-lg leading-6 font-medium text-gray-900" id="modal-title">
-              {title}
-            </h3>
-            <div className="mt-2">
-              <p className="text-sm text-gray-500">
-                {children}
-              </p>
-            </div>
+          <h3 className="text-lg font-semibold text-siemens-secondary mb-2">
+            Confirm Logout
+          </h3>
+          <p className="text-sm text-siemens-secondary-light mb-6">
+            Are you sure you want to sign out of your account?
+          </p>
+          <div className="w-full flex justify-center space-x-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-2 text-sm font-medium rounded-lg border border-gray-300 text-siemens-secondary hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              className="px-5 py-2 text-sm font-medium rounded-lg bg-siemens-error text-white hover:bg-red-700 transition-colors shadow-sm"
+            >
+              Sign Out
+            </button>
           </div>
-        </div>
-        <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
-          <button
-            type="button"
-            className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm"
-            onClick={onConfirm}
-          >
-            Confirm
-          </button>
-          <button
-            type="button"
-            className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:mt-0 sm:w-auto sm:text-sm"
-            onClick={onClose}
-          >
-            Cancel
-          </button>
         </div>
       </div>
     </div>
   );
 };
 
-
 const Header = ({ setSidebarOpen }) => {
   const { user, logout } = useAuth();
   const [showConfirm, setShowConfirm] = useState(false);
 
-  const handleLogoutClick = () => {
-    setShowConfirm(true); // Show the confirmation modal
-  };
-
+  const handleLogoutClick = () => setShowConfirm(true);
   const confirmLogout = () => {
-    logout(); // Perform the actual logout
-    setShowConfirm(false); // Close the modal
+    logout();
+    setShowConfirm(false);
   };
 
   return (
     <>
-      <header className="bg-white shadow-sm border-b border-gray-200">
+      <header className="bg-white shadow-sm border-b border-siemens-primary-light">
         <div className="flex justify-between items-center px-6 py-4">
           <div className="flex items-center">
             <button
-              className="lg:hidden text-gray-500 hover:text-gray-700"
+              className="lg:hidden p-2 rounded-lg hover:bg-siemens-primary-10 text-siemens-secondary-light hover:text-siemens-primary transition-colors"
               onClick={() => setSidebarOpen(true)}
             >
-              <Menu className="h-6 w-6" />
+              <Menu className="h-5 w-5" />
             </button>
           </div>
-
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <div className="bg-blue-100 p-2 rounded-full">
-                <User className="h-5 w-5 text-blue-600" />
+          <div className="flex items-center space-x-6">
+            <div className="flex items-center space-x-3 bg-siemens-primary-10 rounded-full pl-3 pr-4 py-1">
+              <div className="bg-white p-1.5 rounded-full shadow-sm">
+                <User className="h-4 w-4 text-siemens-primary" />
               </div>
-              <div>
-                <p className="text-sm font-medium text-gray-900">{user?.name}</p>
-                <p className="text-xs text-gray-500">{user?.email}</p>
+              <div className="text-right">
+                <p className="text-sm font-medium text-siemens-secondary truncate max-w-[160px]">
+                  {user?.name}
+                </p>
+                <p className="text-xs text-siemens-secondary-light truncate max-w-[160px]">
+                  {user?.email}
+                </p>
               </div>
             </div>
-            
             <button
-              onClick={handleLogoutClick} // Changed to handleLogoutClick
-              className="flex items-center space-x-2 text-gray-500 hover:text-gray-700 transition-colors"
+              onClick={handleLogoutClick}
+              className="flex items-center space-x-2 group"
+              aria-label="Logout"
             >
-              <LogOut className="h-5 w-5" />
-              <span className="text-sm">Logout</span>
+              <div className="p-2 rounded-lg bg-siemens-primary-10 text-siemens-primary hover:bg-siemens-primary hover:text-white transition-colors">
+                <LogOut className="h-5 w-5" />
+              </div>
+              <span className="text-sm font-medium text-siemens-primary hidden sm:inline">
+                Sign Out
+              </span>
             </button>
           </div>
         </div>
       </header>
-
       <ConfirmationModal
         isOpen={showConfirm}
         onClose={() => setShowConfirm(false)}
         onConfirm={confirmLogout}
-        title="Confirm Logout"
-      >
-        Are you sure you want to log out of your account?
-      </ConfirmationModal>
+      />
     </>
   );
 };

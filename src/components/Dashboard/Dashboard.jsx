@@ -8,6 +8,7 @@ import QuestionsManager from "./QuestionsManager";
 import TestsManager from "./TestsManager";
 import PDFUpload from "./PDFUpload";
 import BatchesManager from './BatchesManager';
+import UserManagement from './UserManagement';
 
 const Dashboard = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -32,6 +33,7 @@ const Dashboard = () => {
               <Route path="/questions" element={<QuestionsManager />} />
               <Route path="/tests" element={<TestsManager />} />
               <Route path="/upload" element={<PDFUpload />} />
+              <Route path="/users" element={<UserManagement />} /> 
             </Routes>
           </div>
         </main>

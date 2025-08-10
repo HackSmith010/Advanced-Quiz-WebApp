@@ -16,7 +16,6 @@ const db = {
 const createTables = async () => {
   const client = await pool.connect();
   try {
-    // Users table (Teachers)
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -24,11 +23,11 @@ const createTables = async () => {
         password TEXT NOT NULL,
         name TEXT NOT NULL,
         role TEXT DEFAULT 'teacher',
+        status TEXT DEFAULT 'pending', -- Can be 'pending' or 'approved'
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    // Students table
     await client.query(`
       CREATE TABLE IF NOT EXISTS students (
         id SERIAL PRIMARY KEY,

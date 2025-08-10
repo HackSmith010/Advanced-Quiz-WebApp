@@ -1,17 +1,30 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-import { Plus, Users, Edit, Trash2, X, AlertTriangle } from "lucide-react";
+import {
+  Plus,
+  Users,
+  Edit,
+  Trash2,
+  X,
+  AlertTriangle,
+  ChevronRight,
+} from "lucide-react";
 
 // Reusable Modal Component
-const Modal = ({ children, onClose }) => (
+const Modal = ({ children, onClose, title }) => (
   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-    <div className="bg-white p-6 rounded-lg w-full max-w-md relative shadow-xl">
-      <button
-        onClick={onClose}
-        className="absolute top-3 right-3 p-1 rounded-full text-gray-500 hover:bg-gray-200"
-      >
-        <X size={20} />
-      </button>
+    <div className="bg-white p-6 rounded-xl w-full max-w-md relative shadow-lg border border-siemens-primary-light">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-lg font-semibold text-siemens-secondary">
+          {title}
+        </h3>
+        <button
+          onClick={onClose}
+          className="p-1 rounded-full text-siemens-secondary-light hover:bg-siemens-primary-10 hover:text-siemens-primary"
+        >
+          <X size={20} />
+        </button>
+      </div>
       {children}
     </div>
   </div>
@@ -29,38 +42,31 @@ const ConfirmationModal = ({
   const isBatch = itemType === "batch";
   const title = isBatch ? "Delete Batch" : "Remove Student";
   const message = isBatch
-    ? `Are you sure you want to delete the batch "${itemName}"? All student associations will be removed. This action cannot be undone.`
+    ? `Are you sure you want to delete "${itemName}"? All student associations will be removed.`
     : `Are you sure you want to remove "${itemName}" from this batch?`;
 
   return (
-    <Modal onClose={onClose}>
-      <div className="flex items-start">
-        <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
-          <AlertTriangle className="h-6 w-6 text-red-600" />
+    <Modal onClose={onClose} title={title}>
+      <div className="flex items-start space-x-4">
+        <div className="flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-error-50">
+          <AlertTriangle className="h-6 w-6 text-siemens-error" />
         </div>
-        <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-          <h3 className="text-lg leading-6 font-medium text-gray-900">
-            {title}
-          </h3>
-          <div className="mt-2">
-            <p className="text-sm text-gray-500">{message}</p>
-          </div>
+        <div className="flex-1">
+          <p className="text-sm text-siemens-secondary-light">{message}</p>
         </div>
       </div>
-      <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
-        <button
-          onClick={onConfirm}
-          type="button"
-          className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 sm:ml-3 sm:w-auto sm:text-sm"
-        >
-          {isBatch ? "Delete" : "Remove"}
-        </button>
+      <div className="mt-6 flex justify-end space-x-3">
         <button
           onClick={onClose}
-          type="button"
-          className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:w-auto sm:text-sm"
+          className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 text-siemens-secondary hover:bg-gray-50 transition-colors"
         >
           Cancel
+        </button>
+        <button
+          onClick={onConfirm}
+          className="px-4 py-2 text-sm font-medium rounded-lg bg-siemens-error text-white hover:bg-red-700 transition-colors"
+        >
+          {isBatch ? "Delete Batch" : "Remove Student"}
         </button>
       </div>
     </Modal>
@@ -234,153 +240,229 @@ const BatchesManager = () => {
   };
 
   return (
-    <div>
-      <h1 className="text-3xl font-bold text-gray-900 mb-4">
-        Batches & Students
-      </h1>
+    <div className="p-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-siemens-secondary">
+          Batches & Students
+        </h1>
+        <p className="text-siemens-secondary-light">
+          Manage student groups and individual learners
+        </p>
+      </div>
+
       {error && (
-        <p className="text-red-500 bg-red-100 p-3 rounded-lg mb-4">{error}</p>
+        <div className="bg-error-50 border border-error text-error px-4 py-3 rounded-lg mb-6 flex items-center">
+          <AlertTriangle className="h-5 w-5 mr-2" />
+          {error}
+        </div>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div className="md:col-span-1 bg-white p-4 rounded-lg border">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Batches</h2>
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Batches Panel */}
+        <div className="lg:col-span-1 bg-white rounded-xl shadow-sm border border-siemens-primary-light overflow-hidden">
+          <div className="flex justify-between items-center p-4 border-b border-siemens-primary-light">
+            <h2 className="text-lg font-semibold text-siemens-secondary">
+              Batches
+            </h2>
             <button
               onClick={openBatchModal}
-              className="p-2 rounded-full hover:bg-gray-200"
+              className="p-2 rounded-full bg-siemens-primary-10 text-siemens-primary hover:bg-siemens-primary-20 transition-colors"
             >
-              <Plus size={20} />
+              <Plus size={18} />
             </button>
           </div>
-          <div className="space-y-2">
+          <div className="divide-y divide-siemens-primary-light max-h-[calc(100vh-200px)] overflow-y-auto">
             {batches.map((batch) => (
               <div
                 key={batch.id}
                 onClick={() => handleSelectBatch(batch)}
-                className={`p-4 rounded-lg cursor-pointer border ${
+                className={`p-4 cursor-pointer transition-colors ${
                   selectedBatch?.id === batch.id
-                    ? "bg-blue-100 border-blue-300"
-                    : "bg-white hover:bg-gray-50"
+                    ? "bg-siemens-primary-10"
+                    : "hover:bg-siemens-primary-5"
                 }`}
               >
                 <div className="flex justify-between items-center">
-                  <div>
-                    <p className="font-semibold">{batch.name}</p>
-                    <p className="text-sm text-gray-500">
-                      {batch.student_count} students
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-siemens-secondary truncate">
+                      {batch.name}
+                    </p>
+                    <p className="text-xs text-siemens-secondary-light">
+                      {batch.student_count}{" "}
+                      {batch.student_count === 1 ? "student" : "students"}
                     </p>
                   </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteClick("batch", batch);
-                    }}
-                    className="text-red-500 hover:text-red-700 p-1"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteClick("batch", batch);
+                      }}
+                      className="p-1 text-siemens-secondary-light hover:text-siemens-error"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                    <ChevronRight
+                      size={16}
+                      className={`text-siemens-secondary-light ${
+                        selectedBatch?.id === batch.id ? "rotate-90" : ""
+                      }`}
+                    />
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="md:col-span-2 bg-white p-4 rounded-lg border">
+        {/* Students Panel */}
+        <div className="lg:col-span-3 bg-white rounded-xl shadow-sm border border-siemens-primary-light overflow-hidden">
           {selectedBatch ? (
             <div>
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold">
-                  Students in {selectedBatch.name}
-                </h2>
+              <div className="flex justify-between items-center p-4 border-b border-siemens-primary-light">
+                <div>
+                  <h2 className="text-lg font-semibold text-siemens-secondary">
+                    {selectedBatch.name}
+                  </h2>
+                  <p className="text-sm text-siemens-secondary-light">
+                    {batchStudents.length}{" "}
+                    {batchStudents.length === 1 ? "student" : "students"}
+                  </p>
+                </div>
                 <button
                   onClick={() => openStudentModal()}
-                  className="bg-blue-600 text-white px-3 py-1 rounded-lg text-sm flex items-center"
+                  className="flex items-center space-x-1 bg-siemens-primary hover:bg-siemens-primary-dark text-white px-3 py-2 rounded-lg text-sm transition-colors"
                 >
-                  <Plus size={16} className="mr-1" /> Add New Student
+                  <Plus size={16} />
+                  <span>Add Student</span>
                 </button>
               </div>
-              <div className="space-y-2">
-                {batchStudents.map((student) => (
-                  <div
-                    key={student.id}
-                    className="p-3 bg-gray-50 rounded-lg border flex justify-between items-center"
-                  >
-                    <div>
-                      <p className="font-medium">{student.name}</p>
-                      <p className="text-sm text-gray-500">
-                        {student.roll_number}
-                      </p>
+
+              <div className="divide-y divide-siemens-primary-light max-h-[calc(100vh-200px)] overflow-y-auto">
+                {batchStudents.length > 0 ? (
+                  batchStudents.map((student) => (
+                    <div
+                      key={student.id}
+                      className="p-4 hover:bg-siemens-primary-5 transition-colors flex justify-between items-center"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-siemens-secondary">
+                          {student.name}
+                        </p>
+                        <div className="flex space-x-4 mt-1">
+                          <p className="text-xs text-siemens-secondary-light">
+                            Roll: {student.roll_number}
+                          </p>
+                          {student.email && (
+                            <p className="text-xs text-siemens-secondary-light truncate">
+                              Email: {student.email}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => openStudentModal(student)}
+                          className="p-2 text-siemens-secondary-light hover:text-siemens-primary hover:bg-siemens-primary-10 rounded-lg transition-colors"
+                        >
+                          <Edit size={16} />
+                        </button>
+                        <button
+                          onClick={() =>
+                            handleDeleteClick("student_from_batch", student)
+                          }
+                          className="p-2 text-siemens-secondary-light hover:text-siemens-error hover:bg-error-10 rounded-lg transition-colors"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </div>
-                    <div>
-                      <button
-                        onClick={() => openStudentModal(student)}
-                        className="text-blue-600 hover:text-blue-800 mr-2"
-                      >
-                        <Edit size={18} />
-                      </button>
-                      <button
-                        onClick={() =>
-                          handleDeleteClick("student_from_batch", student)
-                        }
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
+                  ))
+                ) : (
+                  <div className="p-8 text-center">
+                    <p className="text-siemens-secondary-light">
+                      No students in this batch yet
+                    </p>
+                    <button
+                      onClick={() => openStudentModal()}
+                      className="mt-3 text-siemens-primary hover:text-siemens-primary-dark font-medium"
+                    >
+                      Add your first student
+                    </button>
                   </div>
-                ))}
+                )}
               </div>
             </div>
           ) : (
-            <div className="flex items-center justify-center h-full rounded-lg">
-              <p className="text-gray-500">Select a batch to manage students</p>
+            <div className="p-8 text-center">
+              <Users className="mx-auto h-10 w-10 text-siemens-secondary-light mb-3" />
+              <p className="text-siemens-secondary-light">
+                Select a batch to view students
+              </p>
             </div>
           )}
         </div>
       </div>
 
+      {/* Batch Creation Modal */}
       {showBatchModal && (
-        <Modal onClose={() => setShowBatchModal(false)}>
-          <h2 className="text-lg font-semibold mb-4">Create New Batch</h2>
-          <form onSubmit={handleCreateBatch}>
-            {error && <p className="text-red-500 text-sm mb-2">{error}</p>}
-            <input
-              type="text"
-              value={newBatchName}
-              onChange={(e) => setNewBatchName(e.target.value)}
-              className="w-full p-2 border rounded-lg mb-4"
-              placeholder="Batch Name"
-              required
-            />
-            <div className="flex justify-end space-x-2">
+        <Modal
+          onClose={() => setShowBatchModal(false)}
+          title="Create New Batch"
+        >
+          <form onSubmit={handleCreateBatch} className="space-y-4">
+            {error && (
+              <div className="bg-error-50 border border-error text-error px-3 py-2 rounded-lg text-sm">
+                {error}
+              </div>
+            )}
+            <div>
+              <label className="block text-sm font-medium text-siemens-secondary mb-1">
+                Batch Name
+              </label>
+              <input
+                type="text"
+                value={newBatchName}
+                onChange={(e) => setNewBatchName(e.target.value)}
+                className="w-full px-3 py-2 border border-siemens-primary-light rounded-lg focus:ring-2 focus:ring-siemens-primary focus:border-transparent"
+                placeholder="e.g., Summer 2023"
+                required
+              />
+            </div>
+            <div className="flex justify-end space-x-3 pt-2">
               <button
                 type="button"
                 onClick={() => setShowBatchModal(false)}
-                className="px-4 py-2 rounded-lg border"
+                className="px-4 py-2 text-siemens-secondary border border-siemens-primary-light rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={actionLoading}
-                className="px-4 py-2 rounded-lg bg-blue-600 text-white disabled:bg-blue-300"
+                className="px-4 py-2 bg-siemens-primary text-white rounded-lg hover:bg-siemens-primary-dark disabled:bg-siemens-primary-light transition-colors"
               >
-                {actionLoading ? "Creating..." : "Create"}
+                {actionLoading ? "Creating..." : "Create Batch"}
               </button>
             </div>
           </form>
         </Modal>
       )}
 
+      {/* Student Form Modal */}
       {showStudentModal && (
-        <Modal onClose={closeStudentModal}>
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">
-            {editingStudent ? "Edit Student" : "Add New Student"}
-          </h2>
+        <Modal
+          onClose={closeStudentModal}
+          title={editingStudent ? "Edit Student" : "Add New Student"}
+        >
           <form onSubmit={handleStudentSubmit} className="space-y-4">
-            {error && <p className="text-red-500 text-sm mb-2">{error}</p>}
+            {error && (
+              <div className="bg-error-50 border border-error text-error px-3 py-2 rounded-lg text-sm">
+                {error}
+              </div>
+            )}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-siemens-secondary mb-1">
                 Full Name
               </label>
               <input
@@ -393,11 +475,11 @@ const BatchesManager = () => {
                     name: e.target.value,
                   })
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                className="w-full px-3 py-2 border border-siemens-primary-light rounded-lg focus:ring-2 focus:ring-siemens-primary focus:border-transparent"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-siemens-secondary mb-1">
                 Roll Number
               </label>
               <input
@@ -410,11 +492,11 @@ const BatchesManager = () => {
                     rollNumber: e.target.value,
                   })
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                className="w-full px-3 py-2 border border-siemens-primary-light rounded-lg focus:ring-2 focus:ring-siemens-primary focus:border-transparent"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-siemens-secondary mb-1">
                 Email (Optional)
               </label>
               <input
@@ -426,26 +508,26 @@ const BatchesManager = () => {
                     email: e.target.value,
                   })
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                className="w-full px-3 py-2 border border-siemens-primary-light rounded-lg focus:ring-2 focus:ring-siemens-primary focus:border-transparent"
               />
             </div>
-            <div className="flex justify-end space-x-3 pt-4">
+            <div className="flex justify-end space-x-3 pt-2">
               <button
                 type="button"
                 onClick={closeStudentModal}
-                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg"
+                className="px-4 py-2 text-siemens-secondary border border-siemens-primary-light rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={actionLoading}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:bg-blue-300"
+                className="px-4 py-2 bg-siemens-primary text-white rounded-lg hover:bg-siemens-primary-dark disabled:bg-siemens-primary-light transition-colors"
               >
                 {actionLoading
                   ? "Saving..."
                   : editingStudent
-                  ? "Update"
+                  ? "Update Student"
                   : "Add Student"}
               </button>
             </div>
