@@ -126,12 +126,12 @@ const Login = () => {
                 >
                   Password
                 </label>
-                <Link
+                {/* <Link
                   to="/forgot-password"
                   className="text-xs hover:underline text-siemens-primary"
                 >
                   Forgot password?
-                </Link>
+                </Link> */}
               </div>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">

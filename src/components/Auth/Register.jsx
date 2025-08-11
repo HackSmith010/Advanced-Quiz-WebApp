@@ -58,7 +58,7 @@ const Register = () => {
             Registration Successful!
           </h2>
           <p className="text-siemens-secondary-light mb-6">
-            Your account has been created. You can now sign in to access the
+            Your account has been created. You can sign in when the admin gives access to the
             platform.
           </p>
           <Link
@@ -324,10 +324,10 @@ const Register = () => {
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     ></path>
                   </svg>
-                  Creating Account...
+                  Requesting Access...
                 </>
               ) : (
-                "Create Account"
+                "Request Access"
               )}
             </button>
           </form>
@@ -339,7 +339,7 @@ const Register = () => {
                 to="/login"
                 className="font-medium hover:underline text-siemens-primary"
               >
-                Sign in here
+                Sign in
               </Link>
             </p>
           </div>
