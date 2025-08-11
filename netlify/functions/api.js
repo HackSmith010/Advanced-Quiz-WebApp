@@ -1,5 +1,5 @@
 import serverless from 'serverless-http';
-import { initApp } from '../../index.js';
+import { initApp } from '../../api/index.js';
 
 process.env.NETLIFY = 'true';
 
