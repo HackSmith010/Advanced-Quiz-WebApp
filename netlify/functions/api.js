@@ -1,17 +1,14 @@
 import serverless from 'serverless-http';
-import app, { init } from '../../api/index.js';
+import { initApp } from '../../index.js';
 
-process.env.NETLIFY = 'true'; 
+process.env.NETLIFY = 'true';
+
+let serverlessHandler;
 
 export const handler = async (event, context) => {
-  try {
-    await init();
-    return serverless(app)(event, context);
-  } catch (err) {
-    console.error('API function error:', err);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: 'Server error in API function' })
-    };
+  if (!serverlessHandler) {
+    const app = await initApp();
+    serverlessHandler = serverless(app);
   }
+  return serverlessHandler(event, context);
 };

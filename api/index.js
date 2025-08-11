@@ -14,20 +14,12 @@ import quizRoutes from './routes/quiz.js';
 import pdfRoutes from './routes/pdf.js';
 import subjectRoutes from './routes/subjects.js';
 
-const app = express();
-const PORT = process.env.PORT || 3001;
-
-const isServerless = process.env.NETLIFY === 'true';
-const routePrefix = isServerless ? '' : '/api';
-
-let initialized = false;
-
-export async function init() {
-  if (initialized) return;
-  console.log('Initializing API...');
-  
+export async function initApp() {
+  console.info('Initializing API...');
   await createTables();
+  console.info('✅ Database tables checked/created successfully');
 
+  const app = express();
   app.use(cors());
   app.use(json());
   app.use(urlencoded({ extended: true }));
@@ -35,16 +27,16 @@ export async function init() {
   const rootDir = process.cwd();
   app.use('/uploads', express.static(join(rootDir, 'uploads')));
 
-  app.use(`${routePrefix}/auth`, authRoutes.default || authRoutes);
-  app.use(`${routePrefix}/students`, studentRoutes.default || studentRoutes);
-  app.use(`${routePrefix}/batches`, batchRoutes.default || batchRoutes);
-  app.use(`${routePrefix}/questions`, questionRoutes.default || questionRoutes);
-  app.use(`${routePrefix}/tests`, testRoutes.default || testRoutes);
-  app.use(`${routePrefix}/quiz`, quizRoutes.default || quizRoutes);
-  app.use(`${routePrefix}/pdf`, pdfRoutes.default || pdfRoutes);
-  app.use(`${routePrefix}/subjects`, subjectRoutes.default || subjectRoutes);
+  app.use('/api/auth', authRoutes.default || authRoutes);
+  app.use('/api/students', studentRoutes.default || studentRoutes);
+  app.use('/api/batches', batchRoutes.default || batchRoutes);
+  app.use('/api/questions', questionRoutes.default || questionRoutes);
+  app.use('/api/tests', testRoutes.default || testRoutes);
+  app.use('/api/quiz', quizRoutes.default || quizRoutes);
+  app.use('/api/pdf', pdfRoutes.default || pdfRoutes);
+  app.use('/api/subjects', subjectRoutes.default || subjectRoutes);
 
-  app.get(`${routePrefix}/health`, (req, res) => {
+  app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', message: 'IntelliQuiz AI API is running' });
   });
 
@@ -53,18 +45,15 @@ export async function init() {
     res.status(500).json({ error: 'Internal server error' });
   });
 
-  initialized = true;
-  console.log('API initialized.');
+  console.info('API initialized.');
+  return app;
 }
 
-if (!isServerless) {
-  init().then(() => {
+if (process.env.NODE_ENV !== 'production' && process.env.NETLIFY !== 'true') {
+  const PORT = process.env.PORT || 3001;
+  initApp().then((app) => {
     app.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
-  }).catch(err => {
-    console.error('Failed to start server:', err);
   });
 }
-
-export default app;
