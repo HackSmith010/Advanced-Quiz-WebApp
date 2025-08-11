@@ -1,5 +1,6 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
+import { useAuth } from "../../contexts/AuthContext";
 import {
   Home,
   Box,
@@ -11,14 +12,24 @@ import {
 } from "lucide-react";
 
 const Sidebar = ({ open, setOpen }) => {
+  const { user } = useAuth();
+
   const navigation = [
     { name: "Overview", href: "/dashboard/overview", icon: Home },
     { name: "Batches & Students", href: "/dashboard/batches", icon: Box },
     { name: "Questions", href: "/dashboard/questions", icon: FileQuestion },
     { name: "Tests", href: "/dashboard/tests", icon: ClipboardList },
     { name: "Upload PDF", href: "/dashboard/upload", icon: Upload },
-    { name: "User Management", href: "/dashboard/users", icon: UserCog },
   ];
+
+  const adminEmail = import.meta.env.VITE_ADMIN_EMAIL;
+  if (user && user.email === adminEmail) {
+    navigation.push({
+      name: "User Management",
+      href: "/dashboard/users",
+      icon: UserCog,
+    });
+  }
 
   return (
     <>
