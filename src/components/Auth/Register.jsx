@@ -55,7 +55,7 @@ const Register = () => {
         <div className="max-w-md w-full text-center bg-white p-8 rounded-xl shadow-lg border border-siemens-primary-light">
           <CheckCircle className="h-16 w-16 text-siemens-success mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-siemens-secondary mb-2">
-            Registration Successful!
+            Request has been received!
           </h2>
           <p className="text-siemens-secondary-light mb-6">
             Your account has been created. You can sign in when the admin gives access to the
