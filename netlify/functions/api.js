@@ -1,8 +1,6 @@
 import serverless from 'serverless-http';
-import appModule from '../../api/index.js';
+import app from '../../api/index.js';
 
-const app = appModule.default || appModule;
+process.env.NETLIFY = 'true';
 
-export const handler = serverless(app, {
-  basePath: ''
-});
+export const handler = serverless(app);
