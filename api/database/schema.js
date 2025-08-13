@@ -149,7 +149,8 @@ const createTables = async () => {
         start_time TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         end_time TIMESTAMPTZ,
         total_score INTEGER DEFAULT 0,
-        status TEXT DEFAULT 'in_progress'
+        status TEXT DEFAULT 'in_progress',
+        tab_change_count INTEGER DEFAULT 0 -- New column
       )
     `);
 

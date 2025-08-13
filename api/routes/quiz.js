@@ -37,51 +37,60 @@ router.post('/test/:testLink/start', async (req, res) => {
     const { student_name, roll_number } = req.body;
     const { testLink } = req.params;
 
-    const testResult = await db.query(
-      `SELECT * FROM tests WHERE test_link = $1 AND status = 'active'`,
-      [testLink]
-    );
+    const testResult = await db.query(`SELECT * FROM tests WHERE test_link = $1 AND status = 'active'`, [testLink]);
     const test = testResult.rows[0];
     if (!test) {
-      return res.status(404).json({ error: 'Test not found or not active' });
-    }
-
-    const existingAttemptResult = await db.query(
-      `SELECT * FROM test_attempts WHERE test_id = $1 AND student_roll_number = $2 AND status != 'abandoned'`,
-      [test.id, roll_number]
-    );
-    const existingAttempt = existingAttemptResult.rows[0];
-    if (existingAttempt) {
-      return res.status(400).json({ error: 'You have already attempted this test.' });
+      return res.status(404).json({ error: 'Test not found or not active.' });
     }
 
     const studentResult = await db.query(
       `SELECT * FROM students WHERE roll_number = $1 AND teacher_id = $2`,
       [roll_number, test.teacher_id]
     );
-    let student = studentResult.rows[0];
-
+    const student = studentResult.rows[0];
     if (!student) {
-      const insertStudentResult = await db.query(
-        `INSERT INTO students (name, roll_number, teacher_id) VALUES ($1, $2, $3) RETURNING id`,
-        [student_name, roll_number, test.teacher_id]
-      );
-      student = { id: insertStudentResult.rows[0].id };
+      return res.status(401).json({ error: 'This roll number is not registered for this test. Please contact your teacher.' });
+    }
+
+    const existingAttemptResult = await db.query(
+      `SELECT * FROM test_attempts WHERE test_id = $1 AND student_id = $2 AND status != 'abandoned'`,
+      [test.id, student.id]
+    );
+    if (existingAttemptResult.rows.length > 0) {
+      return res.status(400).json({ error: 'You have already attempted this test.' });
     }
 
     const insertAttemptQuery = `
-      INSERT INTO test_attempts (test_id, student_id, student_name, student_roll_number, max_score)
-      VALUES ($1, $2, $3, $4, $5) RETURNING id
+      INSERT INTO test_attempts (test_id, student_id, student_name, student_roll_number)
+      VALUES ($1, $2, $3, $4) RETURNING id
     `;
-    const attemptResult = await db.query(insertAttemptQuery, [
-      test.id, student.id, student_name, roll_number, test.total_questions * test.marks_per_question
-    ]);
+    const attemptResult = await db.query(insertAttemptQuery, [test.id, student.id, student_name, roll_number]);
 
     res.json({ attempt_id: attemptResult.rows[0].id });
   } catch (error) {
     console.error('Error starting test attempt:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+router.post('/attempt/:attemptId/log-tab-change', async (req, res) => {
+    try {
+        const { attemptId } = req.params;
+        const result = await db.query(
+            `UPDATE test_attempts 
+             SET tab_change_count = tab_change_count + 1 
+             WHERE id = $1 
+             RETURNING tab_change_count`,
+            [attemptId]
+        );
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Attempt not found.' });
+        }
+        res.json({ newCount: result.rows[0].tab_change_count });
+    } catch (error) {
+        console.error('Error logging tab change:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 router.get('/attempt/:attemptId/questions', async (req, res) => {
@@ -134,6 +143,30 @@ router.get('/attempt/:attemptId/questions', async (req, res) => {
     console.error('Error fetching questions:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+router.get('/attempt/:attemptId/details-for-pdf', async (req, res) => {
+    try {
+        const { attemptId } = req.params;
+        const query = `
+            SELECT 
+                t.title as test_title, 
+                ta.student_name, ta.student_roll_number, ta.total_score,
+                sa.generated_question, sa.student_answer, sa.correct_answer, sa.is_correct
+            FROM test_attempts ta
+            JOIN tests t ON ta.test_id = t.id
+            LEFT JOIN student_answers sa ON ta.id = sa.attempt_id
+            WHERE ta.id = $1
+        `;
+        const result = await db.query(query, [attemptId]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Attempt data not found.' });
+        }
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error fetching details for PDF:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 router.post('/attempt/:attemptId/submit', async (req, res) => {

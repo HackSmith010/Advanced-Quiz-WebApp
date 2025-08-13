@@ -213,29 +213,38 @@ const TestsManager = () => {
   };
 
   const downloadResultsAsCSV = (results, title) => {
-    const headers = ["Student Name", "Roll Number", "Score", "Submitted At"];
+    const headers = ["Student Name", "Roll Number", "Score", "Submitted At", "Flags"];
     const csvRows = [
-      headers.join(","),
-      ...results.map((row) =>
-        [
-          `"${row.student_name}"`,
-          `"${row.student_roll_number}"`,
-          row.total_score,
-          `"${new Date(row.end_time).toLocaleString()}"`,
-        ].join(",")
-      ),
+      headers.join(','),
+      ...results.map(row => {
+        let flags = '';
+        if (row.tab_change_count === 1) {
+            flags = 'Changed tab once';
+        } else if (row.tab_change_count > 1) {
+            flags = `Auto-submitted after ${row.tab_change_count} tab changes`;
+        }
+        return [
+            `"${row.student_name}"`,
+            `"${row.student_roll_number}"`,
+            row.total_score,
+            `"${new Date(row.end_time).toLocaleString()}"`,
+            `"${flags}"`
+        ].join(',');
+      })
     ];
-    const csvString = csvRows.join("\n");
-    const blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
+
+    const csvString = csvRows.join('\n');
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", `${title.replace(/ /g, "_")}_results.csv`);
-    link.style.visibility = "hidden";
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${title.replace(/ /g, '_')}_results.csv`);
+    link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
+
 
   const getStatusBadge = (status) => {
     const styles = {
