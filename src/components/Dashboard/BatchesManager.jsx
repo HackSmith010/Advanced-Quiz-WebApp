@@ -246,7 +246,7 @@ const BatchesManager = () => {
           Batches & Students
         </h1>
         <p className="text-siemens-secondary-light">
-          Manage student groups and individual learners
+          Manage student groups and individual apprentices
         </p>
       </div>
 

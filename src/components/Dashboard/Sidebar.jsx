@@ -18,7 +18,7 @@ const Sidebar = ({ open, setOpen }) => {
     { name: "Overview", href: "/dashboard/overview", icon: Home },
     { name: "Batches & Students", href: "/dashboard/batches", icon: Box },
     { name: "Questions", href: "/dashboard/questions", icon: FileQuestion },
-    { name: "Tests", href: "/dashboard/tests", icon: ClipboardList },
+    { name: "Tests & Assignments", href: "/dashboard/tests", icon: ClipboardList },
     { name: "Upload PDF", href: "/dashboard/upload", icon: Upload },
   ];
 

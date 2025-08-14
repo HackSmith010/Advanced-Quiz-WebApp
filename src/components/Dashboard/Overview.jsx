@@ -105,13 +105,13 @@ const Overview = () => {
       title: "Total Tests",
       value: stats.totalTests,
       icon: ClipboardList,
-      color: "purple-600",
-    }, // Kept one for variety
+      color: "purple-500",
+    }, 
     {
       title: "Active Tests",
       value: stats.activeTests,
       icon: Activity,
-      color: "orange-500",
+      color: "orange-900",
     },
   ];
 

@@ -165,18 +165,6 @@ const QuestionsManager = () => {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Subjects Panel */}
         <div className="lg:col-span-1 bg-white rounded-xl shadow-sm border border-siemens-primary-light">
-          <div className="flex justify-between items-center p-4 border-b border-siemens-primary-light">
-            <h2 className="text-lg font-semibold text-siemens-secondary flex items-center">
-              <BookCopy className="h-5 w-5 mr-2 text-siemens-primary" />
-              Subjects
-            </h2>
-            <button
-              onClick={() => setShowSubjectModal(true)}
-              className="p-2 rounded-full bg-siemens-primary-10 text-siemens-primary hover:bg-siemens-primary-20"
-            >
-              <Plus size={18} />
-            </button>
-          </div>
           <div className="divide-y divide-siemens-primary-light">
             <div
               onClick={() =>
@@ -199,6 +187,18 @@ const QuestionsManager = () => {
                 <ChevronRight className="h-5 w-5 text-siemens-secondary-light" />
               </div>
             </div>
+                <div className="flex justify-between items-center p-4 border-b border-siemens-primary-light">
+                  <h2 className="text-lg font-semibold text-siemens-secondary flex items-center">
+                    <BookCopy className="h-5 w-5 mr-2 text-siemens-primary" />
+                    Chapters
+                  </h2>
+                  <button
+                    onClick={() => setShowSubjectModal(true)}
+                    className="p-2 rounded-full bg-siemens-primary-10 text-siemens-primary hover:bg-siemens-primary-20"
+                  >
+                    <Plus size={18} />
+                  </button>
+                </div>
             {subjects.map((subject) => (
               <div
                 key={subject.id}
