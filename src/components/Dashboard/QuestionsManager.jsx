@@ -301,19 +301,19 @@ const QuestionsManager = () => {
       {showSubjectModal && (
         <Modal
           onClose={() => setShowSubjectModal(false)}
-          title="Create New Subject"
+          title="Create New Chapter"
         >
           <form onSubmit={handleCreateSubject} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-siemens-secondary mb-2">
-                Subject Name
+                Chapter Name
               </label>
               <input
                 type="text"
                 value={newSubjectName}
                 onChange={(e) => setNewSubjectName(e.target.value)}
                 className="w-full px-3 py-2 border border-siemens-primary-light rounded-lg focus:ring-2 focus:ring-siemens-primary focus:border-transparent"
-                placeholder="e.g., Physics, Mathematics"
+                placeholder="e.g., Percentage, Speed and Velocity"
                 required
               />
             </div>
@@ -330,7 +330,7 @@ const QuestionsManager = () => {
                 disabled={actionLoading}
                 className="px-4 py-2 bg-siemens-primary text-white rounded-lg hover:bg-siemens-primary-dark disabled:bg-siemens-primary-light"
               >
-                {actionLoading ? "Creating..." : "Create Subject"}
+                {actionLoading ? "Creating..." : "Create Chapter"}
               </button>
             </div>
           </form>

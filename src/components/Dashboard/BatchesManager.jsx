@@ -14,6 +14,7 @@ import {
   Loader2,
 } from "lucide-react";
 
+// Reusable Modal Component
 const Modal = ({ children, onClose, title }) => (
   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
     <div className="bg-white p-6 rounded-xl w-full max-w-md relative shadow-lg border border-siemens-primary-light">
@@ -33,6 +34,7 @@ const Modal = ({ children, onClose, title }) => (
   </div>
 );
 
+// Confirmation Modal for Deletions
 const ConfirmationModal = ({
   isOpen,
   onClose,
@@ -42,10 +44,11 @@ const ConfirmationModal = ({
 }) => {
   if (!isOpen) return null;
   const isBatch = itemType === "batch";
-  const title = isBatch ? "Delete Batch" : "Remove Student";
+  const title = isBatch ? "Delete Batch" : "Delete Student";
   const message = isBatch
-    ? `Are you sure you want to delete "${itemName}"?`
-    : `Are you sure you want to remove "${itemName}" from this batch?`;
+    ? `Are you sure you want to delete the batch "${itemName}"? This action cannot be undone.`
+    : `Are you sure you want to permanently delete the student "${itemName}" from the system? This will remove them from all batches.`;
+
   return (
     <Modal onClose={onClose} title={title}>
       <div className="flex items-start space-x-4">
@@ -67,7 +70,7 @@ const ConfirmationModal = ({
           onClick={onConfirm}
           className="px-4 py-2 text-sm font-medium rounded-lg bg-red-600 text-white hover:bg-red-700"
         >
-          {isBatch ? "Delete Batch" : "Remove Student"}
+          {isBatch ? "Delete Batch" : "Delete Student"}
         </button>
       </div>
     </Modal>
@@ -189,10 +192,11 @@ const BatchesManager = () => {
         fetchBatches();
         setSelectedBatch(null);
       } else if (itemToDelete.type === "student_from_batch") {
-        await axios.delete(
-          `/api/batches/${selectedBatch.id}/students/${itemToDelete.data.id}`
-        );
-        if (selectedBatch) handleSelectBatch(selectedBatch);
+        // This is the corrected logic to permanently delete the student.
+        await axios.delete(`/api/students/${itemToDelete.data.id}`);
+        if (selectedBatch) {
+          handleSelectBatch(selectedBatch);
+        }
         fetchBatches();
       }
     } catch (err) {
@@ -378,7 +382,7 @@ const BatchesManager = () => {
                                 handleDeleteClick("student_from_batch", student)
                               }
                               className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
-                              title="Remove from Batch"
+                              title="Delete Student Permanently"
                             >
                               <Trash2 size={16} />
                             </button>
@@ -426,19 +430,16 @@ const BatchesManager = () => {
           onClose={() => setShowBatchModal(false)}
           title="Create New Batch"
         >
-          {" "}
           <form onSubmit={handleCreateBatch} className="space-y-4">
-            {" "}
             {error && (
               <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded-lg text-sm">
                 {error}
               </div>
-            )}{" "}
+            )}
             <div>
-              {" "}
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Batch Name
-              </label>{" "}
+              </label>
               <input
                 type="text"
                 value={newBatchName}
@@ -446,26 +447,25 @@ const BatchesManager = () => {
                 className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-siemens-primary"
                 placeholder="e.g., Summer 2024"
                 required
-              />{" "}
-            </div>{" "}
+              />
+            </div>
             <div className="flex justify-end space-x-3 pt-2">
-              {" "}
               <button
                 type="button"
                 onClick={() => setShowBatchModal(false)}
                 className="px-4 py-2 border rounded-lg hover:bg-gray-50"
               >
                 Cancel
-              </button>{" "}
+              </button>
               <button
                 type="submit"
                 disabled={actionLoading}
                 className="px-4 py-2 bg-siemens-primary text-white rounded-lg hover:bg-siemens-primary-dark disabled:opacity-50"
               >
                 {actionLoading ? "Creating..." : "Create Batch"}
-              </button>{" "}
-            </div>{" "}
-          </form>{" "}
+              </button>
+            </div>
+          </form>
         </Modal>
       )}
 

@@ -1,10 +1,10 @@
-import express from 'express';
-import { db } from '../database/schema.js';
-import { authenticateToken } from '../middleware/auth.js';
+import express from "express";
+import { db } from "../database/schema.js";
+import { authenticateToken } from "../middleware/auth.js";
 
 const router = express.Router();
 
-router.get('/', authenticateToken, async (req, res) => {
+router.get("/", authenticateToken, async (req, res) => {
   try {
     const query = `
       SELECT b.*, COUNT(sb.student_id)::int as student_count
@@ -17,12 +17,12 @@ router.get('/', authenticateToken, async (req, res) => {
     const result = await db.query(query, [req.user.userId]);
     res.json(result.rows);
   } catch (error) {
-    console.error('Error fetching batches:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Error fetching batches:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.post('/', authenticateToken, async (req, res) => {
+router.post("/", authenticateToken, async (req, res) => {
   try {
     const { name } = req.body;
     const query = `
@@ -32,126 +32,146 @@ router.post('/', authenticateToken, async (req, res) => {
     `;
     const result = await db.query(query, [name, req.user.userId]);
     res.status(201).json(result.rows[0]);
-  } catch (error){
+  } catch (error) {
     // Handle potential unique constraint violation for batch name
-    if (error.code === '23505') {
-        return res.status(409).json({ error: 'A batch with this name already exists.' });
+    if (error.code === "23505") {
+      return res
+        .status(409)
+        .json({ error: "A batch with this name already exists." });
     }
-    console.error('Error creating batch:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Error creating batch:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.get('/:batchId/students', authenticateToken, async (req, res) => {
-    try {
-        const { batchId } = req.params;
-        const query = `
-            SELECT s.* FROM students s
-            JOIN student_batches sb ON s.id = sb.student_id
-            WHERE sb.batch_id = $1 AND s.teacher_id = $2
-            ORDER BY s.name
-        `;
-        const result = await db.query(query, [batchId, req.user.userId]);
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Error fetching students for batch:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
+router.get("/:batchId/students", authenticateToken, async (req, res) => {
+  try {
+    const { batchId } = req.params;
+    const query = `
+    SELECT s.* FROM students s
+    JOIN student_batches sb ON s.id = sb.student_id
+    WHERE sb.batch_id = $1 AND s.teacher_id = $2
+    ORDER BY s.created_at ASC
+`;
+    const result = await db.query(query, [batchId, req.user.userId]);
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Error fetching students for batch:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
-
 // MODIFIED: This route now handles creating a new student and adding them to the batch.
-router.post('/:batchId/students', authenticateToken, async (req, res) => {
-    const { batchId } = req.params;
-    const { name, roll_number, email } = req.body;
-    const client = await db.getClient();
+router.post("/:batchId/students", authenticateToken, async (req, res) => {
+  const { batchId } = req.params;
+  const { name, roll_number, email } = req.body;
+  const client = await db.getClient();
 
-    try {
-        await client.query('BEGIN');
+  try {
+    await client.query("BEGIN");
 
-        // Step 1: Insert the new student and get their new ID back.
-        const studentInsertQuery = `
+    // Step 1: Insert the new student and get their new ID back.
+    const studentInsertQuery = `
             INSERT INTO students (name, roll_number, email, teacher_id)
             VALUES ($1, $2, $3, $4)
             RETURNING id
         `;
-        const studentResult = await client.query(studentInsertQuery, [
-            name,
-            roll_number,
-            email || null,
-            req.user.userId
-        ]);
-        const newStudentId = studentResult.rows[0].id;
+    const studentResult = await client.query(studentInsertQuery, [
+      name,
+      roll_number,
+      email || null,
+      req.user.userId,
+    ]);
+    const newStudentId = studentResult.rows[0].id;
 
-        // Step 2: Link the new student to the batch.
-        const associationQuery = `
+    // Step 2: Link the new student to the batch.
+    const associationQuery = `
             INSERT INTO student_batches (student_id, batch_id)
             VALUES ($1, $2)
         `;
-        await client.query(associationQuery, [newStudentId, batchId]);
+    await client.query(associationQuery, [newStudentId, batchId]);
 
-        await client.query('COMMIT');
-        res.status(201).json({ success: true, message: 'Student created and added to batch successfully.' });
-
-    } catch (error) {
-        await client.query('ROLLBACK');
-        console.error("Error creating and adding student to batch:", error);
-        
-        if (error.code === '23505') { // Unique violation (e.g., duplicate roll number)
-            return res.status(409).json({ error: 'A student with this roll number already exists.' });
-        }
-        
-        res.status(500).json({ error: 'Internal server error' });
-    } finally {
-        client.release();
-    }
-});
-
-router.delete('/:batchId', authenticateToken, async (req, res) => {
-  try {
-    const { batchId } = req.params;
-    const result = await db.query(
-      'DELETE FROM batches WHERE id = $1 AND teacher_id = $2',
-      [batchId, req.user.userId]
-    );
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Batch not found' });
-    }
-    res.json({ message: 'Batch deleted successfully' });
+    await client.query("COMMIT");
+    res
+      .status(201)
+      .json({
+        success: true,
+        message: "Student created and added to batch successfully.",
+      });
   } catch (error) {
-    console.error('Error deleting batch:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    await client.query("ROLLBACK");
+    console.error("Error creating and adding student to batch:", error);
+
+    if (error.code === "23505") {
+      // Unique violation (e.g., duplicate roll number)
+      return res
+        .status(409)
+        .json({ error: "A student with this roll number already exists." });
+    }
+
+    res.status(500).json({ error: "Internal server error" });
+  } finally {
+    client.release();
   }
 });
 
-router.delete('/:batchId/students/:studentId', authenticateToken, async (req, res) => {
+router.delete("/:batchId", authenticateToken, async (req, res) => {
+  try {
+    const { batchId } = req.params;
+    const result = await db.query(
+      "DELETE FROM batches WHERE id = $1 AND teacher_id = $2",
+      [batchId, req.user.userId]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Batch not found" });
+    }
+    res.json({ message: "Batch deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting batch:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.delete(
+  "/:batchId/students/:studentId",
+  authenticateToken,
+  async (req, res) => {
     try {
-        const { batchId, studentId } = req.params;
-        const query = `
+      const { batchId, studentId } = req.params;
+      const query = `
             DELETE FROM student_batches 
             WHERE batch_id = $1 AND student_id = $2
         `;
-        // We also need to check that the teacher owns this student/batch combo
-        const verificationQuery = `
+      // We also need to check that the teacher owns this student/batch combo
+      const verificationQuery = `
             SELECT b.teacher_id FROM batches b 
             JOIN student_batches sb ON b.id = sb.batch_id
             WHERE sb.batch_id = $1 AND sb.student_id = $2
         `;
-        const verificationResult = await db.query(verificationQuery, [batchId, studentId]);
-        if (verificationResult.rowCount === 0 || verificationResult.rows[0].teacher_id !== req.user.userId) {
-            return res.status(403).json({ error: 'Permission denied.' });
-        }
+      const verificationResult = await db.query(verificationQuery, [
+        batchId,
+        studentId,
+      ]);
+      if (
+        verificationResult.rowCount === 0 ||
+        verificationResult.rows[0].teacher_id !== req.user.userId
+      ) {
+        return res.status(403).json({ error: "Permission denied." });
+      }
 
-        // If verification passes, then delete
-        const result = await db.query(query, [batchId, studentId]);
-        if (result.rowCount === 0) {
-            return res.status(404).json({ error: 'Student not found in this batch.' });
-        }
-        res.json({ message: 'Student removed from batch successfully' });
+      // If verification passes, then delete
+      const result = await db.query(query, [batchId, studentId]);
+      if (result.rowCount === 0) {
+        return res
+          .status(404)
+          .json({ error: "Student not found in this batch." });
+      }
+      res.json({ message: "Student removed from batch successfully" });
     } catch (error) {
-        console.error('Error removing student from batch:', error);
-        res.status(500).json({ error: 'Internal server error' });
+      console.error("Error removing student from batch:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
-});
+  }
+);
 
 export default router;
