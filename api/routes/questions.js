@@ -100,6 +100,24 @@ router.put("/:id/status", authenticateToken, async (req, res) => {
   }
 });
 
+router.delete('/:id', authenticateToken, async (req, res) => {
+  try {
+    const result = await db.query(
+      'DELETE FROM question_templates WHERE id = $1 AND teacher_id = $2',
+      [req.params.id, req.user.userId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Question not found or permission denied' });
+    }
+
+    res.json({ message: 'Question deleted permanently' });
+  } catch (error) {
+    console.error('Error deleting question:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.put("/:id", authenticateToken, async (req, res) => {
   try {
     const {
