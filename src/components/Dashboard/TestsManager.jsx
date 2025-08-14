@@ -105,13 +105,22 @@ const TestsManager = () => {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  const [formData, setFormData] = useState({
+  // MODIFIED: Added `number_of_questions` to the initial form state.
+  const initialFormData = {
     title: "",
     description: "",
     duration_minutes: 60,
     marks_per_question: 1,
+    number_of_questions: 10, // Default value
     question_ids: [],
-  });
+  };
+
+  const [formData, setFormData] = useState(initialFormData);
+
+  // MODIFIED: Added a validation check for the new field.
+  const isFormValid =
+    formData.question_ids.length >= formData.number_of_questions &&
+    formData.number_of_questions > 0;
 
   useEffect(() => {
     fetchTests();
@@ -152,22 +161,20 @@ const TestsManager = () => {
 
   const handleCreateTest = async (e) => {
     e.preventDefault();
+    if (!isFormValid) {
+      setError("Form is invalid. Please check the number of questions.");
+      return;
+    }
     setActionLoading(true);
     setError("");
     setMessage("");
     try {
-      await axios.post("/api/tests", formData);
+      await axios.post("/api/tests", formData); // formData now includes number_of_questions
       setMessage("Test created successfully!");
       fetchTests();
       setTimeout(() => {
         setShowCreateModal(false);
-        setFormData({
-          title: "",
-          description: "",
-          duration_minutes: 60,
-          marks_per_question: 1,
-          question_ids: [],
-        });
+        setFormData(initialFormData); // Reset to initial state
         setMessage("");
       }, 1500);
     } catch (error) {
@@ -213,38 +220,43 @@ const TestsManager = () => {
   };
 
   const downloadResultsAsCSV = (results, title) => {
-    const headers = ["Student Name", "Roll Number", "Score", "Submitted At", "Flags"];
+    const headers = [
+      "Student Name",
+      "Roll Number",
+      "Score",
+      "Submitted At",
+      "Flags",
+    ];
     const csvRows = [
-      headers.join(','),
-      ...results.map(row => {
-        let flags = '';
+      headers.join(","),
+      ...results.map((row) => {
+        let flags = "";
         if (row.tab_change_count === 1) {
-            flags = 'Changed tab once';
+          flags = "Changed tab once";
         } else if (row.tab_change_count > 1) {
-            flags = `Auto-submitted after ${row.tab_change_count} tab changes`;
+          flags = `Auto-submitted after ${row.tab_change_count} tab changes`;
         }
         return [
-            `"${row.student_name}"`,
-            `"${row.student_roll_number}"`,
-            row.total_score,
-            `"${new Date(row.end_time).toLocaleString()}"`,
-            `"${flags}"`
-        ].join(',');
-      })
+          `"${row.student_name}"`,
+          `"${row.student_roll_number}"`,
+          row.total_score,
+          `"${new Date(row.end_time).toLocaleString()}"`,
+          `"${flags}"`,
+        ].join(",");
+      }),
     ];
 
-    const csvString = csvRows.join('\n');
-    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
+    const csvString = csvRows.join("\n");
+    const blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `${title.replace(/ /g, '_')}_results.csv`);
-    link.style.visibility = 'hidden';
+    link.setAttribute("href", url);
+    link.setAttribute("download", `${title.replace(/ /g, "_")}_results.csv`);
+    link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
-
 
   const getStatusBadge = (status) => {
     const styles = {
@@ -265,6 +277,7 @@ const TestsManager = () => {
 
   return (
     <div className="p-6">
+      {/* --- Main page content, no changes needed here --- */}
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-siemens-secondary">
@@ -285,13 +298,13 @@ const TestsManager = () => {
       </div>
 
       {error && (
-        <div className="bg-error-50 border border-siemens-error text-siemens-error px-4 py-3 rounded-lg mb-6 flex items-center">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-6 flex items-center">
           <AlertTriangle className="h-5 w-5 mr-2" />
           {error}
         </div>
       )}
       {message && (
-        <div className="bg-green-50 border border-green-500 text-green-800 px-4 py-3 rounded-lg mb-6 flex items-center">
+        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg mb-6 flex items-center">
           <CheckCircle className="h-5 w-5 mr-2" />
           {message}
         </div>
@@ -321,9 +334,10 @@ const TestsManager = () => {
               <div className="flex justify-between items-start">
                 <div>
                   <div className="flex items-center space-x-3 mb-2">
-                    {getStatusBadge(test.status)}{" "}
+                    {getStatusBadge(test.status)}
+                    {/* MODIFIED: Display the correct number of questions for the test */}
                     <span className="text-sm text-siemens-secondary-light">
-                      {test.total_questions} questions
+                      {test.number_of_questions} questions
                     </span>
                   </div>
                   <h3 className="text-lg font-semibold text-siemens-secondary">
@@ -348,7 +362,7 @@ const TestsManager = () => {
                 <div className="flex items-center space-x-2">
                   <Users className="h-4 w-4" />{" "}
                   <span>
-                    Total: {test.total_questions * test.marks_per_question}{" "}
+                    Total: {test.number_of_questions * test.marks_per_question}{" "}
                     marks
                   </span>
                 </div>
@@ -397,13 +411,14 @@ const TestsManager = () => {
         </div>
       )}
 
+      {/* --- MODIFIED CREATE TEST MODAL --- */}
       {showCreateModal && (
         <Modal
           onClose={() => setShowCreateModal(false)}
           title="Create New Test"
         >
           <form onSubmit={handleCreateTest} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-siemens-secondary mb-1">
                   Test Title
@@ -450,38 +465,75 @@ const TestsManager = () => {
                 className="w-full px-3 py-2 border border-siemens-primary-light rounded-lg focus:ring-2 focus:ring-siemens-primary focus:border-transparent"
               ></textarea>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-siemens-secondary mb-1">
-                Marks per Question
-              </label>
-              <input
-                type="number"
-                required
-                min="1"
-                value={formData.marks_per_question}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    marks_per_question: parseInt(e.target.value),
-                  })
-                }
-                className="w-full px-3 py-2 border border-siemens-primary-light rounded-lg focus:ring-2 focus:ring-siemens-primary focus:border-transparent"
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-siemens-secondary mb-1">
+                  Marks per Question
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  value={formData.marks_per_question}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      marks_per_question: parseInt(e.target.value),
+                    })
+                  }
+                  className="w-full px-3 py-2 border border-siemens-primary-light rounded-lg focus:ring-2 focus:ring-siemens-primary focus:border-transparent"
+                />
+              </div>
+
+              {/* NEW: Input for Number of Questions */}
+              <div>
+                <label className="block text-sm font-medium text-siemens-secondary mb-1">
+                  Number of Questions for Test
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  max={formData.question_ids.length}
+                  value={formData.number_of_questions}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      number_of_questions: parseInt(e.target.value) || 0,
+                    })
+                  }
+                  className="w-full px-3 py-2 border border-siemens-primary-light rounded-lg focus:ring-2 focus:ring-siemens-primary focus:border-transparent"
+                />
+                {/* NEW: Validation Message */}
+                {!isFormValid && formData.question_ids.length > 0 && (
+                  <p className="text-xs text-red-600 mt-1">
+                    Must be a positive number and not more than the number of
+                    selected questions.
+                  </p>
+                )}
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-siemens-secondary mb-1">
-                Select Questions ({formData.question_ids.length} selected)
+                Select Questions from Bank ({formData.question_ids.length}{" "}
+                selected)
               </label>
-              <div className="space-y-3">
-                {Object.keys(questionsBySubject).map((subjectName) => (
-                  <SubjectAccordion
-                    key={subjectName}
-                    subjectName={subjectName}
-                    questions={questionsBySubject[subjectName]}
-                    selectedIds={formData.question_ids}
-                    onToggle={handleQuestionToggle}
-                  />
-                ))}
+              <div className="space-y-3 p-3 border rounded-lg bg-gray-50 max-h-64 overflow-y-auto">
+                {Object.keys(questionsBySubject).length > 0 ? (
+                  Object.keys(questionsBySubject).map((subjectName) => (
+                    <SubjectAccordion
+                      key={subjectName}
+                      subjectName={subjectName}
+                      questions={questionsBySubject[subjectName]}
+                      selectedIds={formData.question_ids}
+                      onToggle={handleQuestionToggle}
+                    />
+                  ))
+                ) : (
+                  <p className="text-center text-gray-500">
+                    No approved questions in the question bank.
+                  </p>
+                )}
               </div>
             </div>
             <div className="flex justify-end space-x-3 pt-4 border-t border-siemens-primary-light">
@@ -494,7 +546,8 @@ const TestsManager = () => {
               </button>
               <button
                 type="submit"
-                disabled={actionLoading || formData.question_ids.length === 0}
+                // MODIFIED: Updated disabled logic to include form validation
+                disabled={actionLoading || !isFormValid}
                 className="px-4 py-2 text-white rounded-lg transition-colors bg-siemens-primary hover:bg-siemens-primary-dark disabled:bg-siemens-primary-light"
               >
                 {actionLoading ? (
@@ -511,6 +564,7 @@ const TestsManager = () => {
         </Modal>
       )}
 
+      {/* --- Results Modal, no changes needed here --- */}
       {showResultsModal && (
         <Modal
           onClose={() => setShowResultsModal(false)}

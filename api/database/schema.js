@@ -1,4 +1,3 @@
-// database/schema.js
 import pg from "pg";
 import dns from "dns";
 
@@ -8,7 +7,7 @@ const { Pool } = pg;
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }, 
+  ssl: { rejectUnauthorized: false },
 });
 
 const db = {
@@ -35,7 +34,7 @@ async function connectWithRetry(retries = 3, delayMs = 1000) {
 }
 
 const createTables = async () => {
-  await connectWithRetry(); 
+  await connectWithRetry();
   const client = await pool.connect();
 
   try {
@@ -125,6 +124,7 @@ const createTables = async () => {
         teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         duration_minutes INTEGER DEFAULT 60,
         marks_per_question INTEGER DEFAULT 1,
+        number_of_questions INTEGER, -- MODIFIED: This field is required by the new logic.
         test_link TEXT UNIQUE NOT NULL,
         status TEXT DEFAULT 'draft',
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -150,7 +150,20 @@ const createTables = async () => {
         end_time TIMESTAMPTZ,
         total_score INTEGER DEFAULT 0,
         status TEXT DEFAULT 'in_progress',
-        tab_change_count INTEGER DEFAULT 0 -- New column
+        tab_change_count INTEGER DEFAULT 0
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS student_answers (
+        id SERIAL PRIMARY KEY,
+        attempt_id INTEGER NOT NULL REFERENCES test_attempts(id) ON DELETE CASCADE,
+        question_template_id INTEGER NOT NULL REFERENCES question_templates(id),
+        generated_question TEXT NOT NULL,
+        student_answer TEXT,
+        correct_answer TEXT NOT NULL,
+        is_correct BOOLEAN NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
 

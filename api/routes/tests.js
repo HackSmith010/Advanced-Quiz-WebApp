@@ -8,7 +8,17 @@ const router = express.Router();
 router.get("/", authenticateToken, async (req, res) => {
   try {
     const query = `
-      SELECT t.*, COUNT(tq.question_template_id)::int as total_questions
+      SELECT 
+        t.id,
+        t.title,
+        t.description,
+        t.duration_minutes,
+        t.marks_per_question,
+        t.status,
+        t.test_link,
+        t.created_at,
+        t.number_of_questions, -- MODIFIED: Explicitly select the new field.
+        COUNT(tq.question_template_id)::int as total_available_questions
       FROM tests t
       LEFT JOIN test_questions tq ON t.id = tq.test_id
       WHERE t.teacher_id = $1
@@ -32,17 +42,26 @@ router.post("/", authenticateToken, async (req, res) => {
       duration_minutes,
       marks_per_question,
       question_ids,
+      number_of_questions, 
     } = req.body;
     const testLink = uuidv4();
 
     const uniqueQuestionIds = [...new Set(question_ids)];
 
+    if (!number_of_questions || number_of_questions <= 0) {
+      return res.status(400).json({ error: "Number of questions must be a positive integer." });
+    }
+    if (uniqueQuestionIds.length < number_of_questions) {
+        return res.status(400).json({ error: "Cannot create test. The number of selected questions is less than the number of questions required for the test." });
+    }
+
+
     await client.query("BEGIN");
 
     const insertTestQuery = `
       INSERT INTO tests (title, description, teacher_id, duration_minutes, 
-                        marks_per_question, test_link, status)
-      VALUES ($1, $2, $3, $4, $5, $6, 'draft')
+                        marks_per_question, test_link, status, number_of_questions)
+      VALUES ($1, $2, $3, $4, $5, $6, 'draft', $7)
       RETURNING id
     `;
     const testResult = await client.query(insertTestQuery, [
@@ -52,6 +71,7 @@ router.post("/", authenticateToken, async (req, res) => {
       duration_minutes || 60,
       marks_per_question || 1,
       testLink,
+      number_of_questions, 
     ]);
     const testId = testResult.rows[0].id;
 
@@ -59,7 +79,6 @@ router.post("/", authenticateToken, async (req, res) => {
       INSERT INTO test_questions (test_id, question_template_id)
       VALUES ($1, $2)
     `;
-    // Use the unique list of IDs for the loop
     for (const questionId of uniqueQuestionIds) {
       await client.query(insertTestQuestionQuery, [testId, questionId]);
     }
