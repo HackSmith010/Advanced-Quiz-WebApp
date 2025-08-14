@@ -18,12 +18,18 @@ const Sidebar = ({ open, setOpen }) => {
     { name: "Overview", href: "/dashboard/overview", icon: Home },
     { name: "Batches & Students", href: "/dashboard/batches", icon: Box },
     { name: "Questions", href: "/dashboard/questions", icon: FileQuestion },
-    { name: "Tests & Assignments", href: "/dashboard/tests", icon: ClipboardList },
+    {
+      name: "Tests & Assignments",
+      href: "/dashboard/tests",
+      icon: ClipboardList,
+    },
     { name: "Upload PDF", href: "/dashboard/upload", icon: Upload },
   ];
 
-  const adminEmail = import.meta.env.VITE_ADMIN_EMAIL;
-  if (user && user.email === adminEmail) {
+  const adminEmailsString = import.meta.env.VITE_ADMIN_EMAIL || "";
+  const adminEmailsArray = adminEmailsString.split(",");
+
+  if (user && adminEmailsArray.includes(user.email)) {
     navigation.push({
       name: "User Management",
       href: "/dashboard/users",
@@ -92,7 +98,8 @@ const Sidebar = ({ open, setOpen }) => {
                       className={`mr-3 h-5 w-5 ${
                         isActive
                           ? "text-siemens-primary"
-                          : "text-siemens-secondary-light group-hover:text-siemens-primary"
+                          : 
+                            "text-siemens-secondary-light group-hover:text-siemens-primary"
                       }`}
                     />
                     {item.name}

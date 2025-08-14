@@ -64,7 +64,7 @@ const Header = ({ setSidebarOpen }) => {
           <div className="flex items-center space-x-6">
             <div className="flex items-center space-x-3 bg-siemens-primary-10 rounded-full pl-3 pr-4 py-1">
               <div className="bg-white p-1.5 rounded-full shadow-sm">
-                <User className="h-4 w-4 text-siemens-primary" />
+                <User className="h-5 w-5 text-siemens-primary" />
               </div>
               <div className="text-right">
                 <p className="text-sm font-medium text-siemens-secondary truncate max-w-[160px]">

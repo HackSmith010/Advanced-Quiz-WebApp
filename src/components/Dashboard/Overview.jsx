@@ -61,7 +61,6 @@ const Overview = () => {
         activeTests,
       });
 
-      // Process and set recent activity
       const recentTests = testsRes.data.map((test) => ({
         type: "Test Created",
         icon: ClipboardList,
@@ -78,7 +77,7 @@ const Overview = () => {
 
       const combinedActivity = [...recentTests, ...recentQuestions]
         .sort((a, b) => new Date(b.date) - new Date(a.date))
-        .slice(0, 4); // Get the 4 most recent activities
+        .slice(0, 4);
 
       setRecentActivity(combinedActivity);
     } catch (error) {
@@ -93,25 +92,29 @@ const Overview = () => {
       title: "Total Students",
       value: stats.totalStudents,
       icon: Users,
-      color: "siemens-primary",
+      bgColor: "bg-siemens-primary-100",
+      textColor: "text-siemens-primary",
     },
     {
       title: "Question Bank",
       value: stats.totalQuestions,
       icon: FileQuestion,
-      color: "siemens-success",
+      bgColor: "bg-green-100",
+      textColor: "text-green-500",
     },
     {
       title: "Total Tests",
       value: stats.totalTests,
       icon: ClipboardList,
-      color: "purple-500",
-    }, 
+      bgColor: "bg-purple-100",
+      textColor: "text-purple-500",
+    },
     {
       title: "Active Tests",
       value: stats.activeTests,
       icon: Activity,
-      color: "orange-900",
+      bgColor: "bg-orange-100",
+      textColor: "text-orange-500",
     },
   ];
 
@@ -150,8 +153,9 @@ const Overview = () => {
                   {stat.value}
                 </p>
               </div>
-              <div className={`p-3 rounded-full bg-${stat.color}-100`}>
-                <stat.icon className={`h-6 w-6 text-${stat.color}`} />
+              {/* MODIFIED: Using the full class names from the statCards array */}
+              <div className={`p-3 rounded-full ${stat.bgColor}`}>
+                <stat.icon className={`h-6 w-6 ${stat.textColor}`} />
               </div>
             </div>
           </div>

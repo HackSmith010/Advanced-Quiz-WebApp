@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+import jsPDF from "jspdf";
+import autoTable from 'jspdf-autotable';
 import {
   Plus,
   ClipboardList,
@@ -20,10 +22,10 @@ import {
   CheckCircle,
 } from "lucide-react";
 
-// Reusable Modal Component (from target theme)
+// Reusable Modal Component
 const Modal = ({ children, onClose, title }) => (
   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-    <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-lg border border-siemens-primary-light">
+    <div className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-lg border border-siemens-primary-light">
       <div className="flex justify-between items-center p-4 border-b border-siemens-primary-light">
         <h3 className="text-lg font-semibold text-siemens-secondary">
           {title}
@@ -40,6 +42,7 @@ const Modal = ({ children, onClose, title }) => (
   </div>
 );
 
+// SubjectAccordion Component
 const SubjectAccordion = ({
   subjectName,
   questions,
@@ -63,18 +66,14 @@ const SubjectAccordion = ({
             ({questions.length} available)
           </span>
         </div>
-        {isOpen ? (
-          <ChevronUp size={20} className="text-siemens-secondary-light" />
-        ) : (
-          <ChevronDown size={20} className="text-siemens-secondary-light" />
-        )}
+        {isOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
       </button>
       {isOpen && (
         <div className="p-3 space-y-2 max-h-48 overflow-y-auto">
           {questions.map((q) => (
             <label
               key={q.id}
-              className="flex items-start space-x-3 cursor-pointer p-2 hover:bg-siemens-primary-5 rounded transition-colors"
+              className="flex items-start space-x-3 cursor-pointer p-2 hover:bg-siemens-primary-5 rounded"
             >
               <input
                 type="checkbox"
@@ -104,20 +103,15 @@ const TestsManager = () => {
   const [currentTestTitle, setCurrentTestTitle] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-
-  // MODIFIED: Added `number_of_questions` to the initial form state.
   const initialFormData = {
     title: "",
     description: "",
     duration_minutes: 60,
     marks_per_question: 1,
-    number_of_questions: 10, // Default value
+    number_of_questions: 10,
     question_ids: [],
   };
-
   const [formData, setFormData] = useState(initialFormData);
-
-  // MODIFIED: Added a validation check for the new field.
   const isFormValid =
     formData.question_ids.length >= formData.number_of_questions &&
     formData.number_of_questions > 0;
@@ -169,12 +163,12 @@ const TestsManager = () => {
     setError("");
     setMessage("");
     try {
-      await axios.post("/api/tests", formData); // formData now includes number_of_questions
+      await axios.post("/api/tests", formData);
       setMessage("Test created successfully!");
       fetchTests();
       setTimeout(() => {
         setShowCreateModal(false);
-        setFormData(initialFormData); // Reset to initial state
+        setFormData(initialFormData);
         setMessage("");
       }, 1500);
     } catch (error) {
@@ -208,6 +202,7 @@ const TestsManager = () => {
   };
 
   const viewResults = async (test) => {
+    setActionLoading(true);
     try {
       const response = await axios.get(`/api/tests/${test.id}/results`);
       setCurrentResults(response.data);
@@ -216,6 +211,8 @@ const TestsManager = () => {
     } catch (error) {
       console.error("Error fetching results:", error);
       setError("Failed to load results.");
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -230,12 +227,10 @@ const TestsManager = () => {
     const csvRows = [
       headers.join(","),
       ...results.map((row) => {
-        let flags = "";
-        if (row.tab_change_count === 1) {
-          flags = "Changed tab once";
-        } else if (row.tab_change_count > 1) {
-          flags = `Auto-submitted after ${row.tab_change_count} tab changes`;
-        }
+        let flags =
+          row.tab_change_count > 0
+            ? `${row.tab_change_count} tab change(s)`
+            : "None";
         return [
           `"${row.student_name}"`,
           `"${row.student_roll_number}"`,
@@ -245,7 +240,6 @@ const TestsManager = () => {
         ].join(",");
       }),
     ];
-
     const csvString = csvRows.join("\n");
     const blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
@@ -256,6 +250,80 @@ const TestsManager = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleDownloadStudentPdf = async (attemptId) => {
+    setActionLoading(true);
+    try {
+      const response = await axios.get(
+        `/api/quiz/attempt/${attemptId}/details-for-pdf`
+      );
+      const details = response.data;
+
+      if (!details || details.length === 0) {
+        setError("Could not find details for this attempt.");
+        return;
+      }
+
+      const doc = new jsPDF();
+      const { test_title, student_name, student_roll_number, total_score } =
+        details[0];
+      const submissionTime = new Date(
+        details[0].end_time || Date.now()
+      ).toLocaleString();
+
+      doc.setFontSize(18);
+      doc.text(test_title, 105, 20, { align: "center" });
+      doc.setFontSize(12);
+      doc.text(`Student: ${student_name} (${student_roll_number})`, 105, 30, {
+        align: "center",
+      });
+      doc.text(`Submitted: ${submissionTime}`, 105, 36, { align: "center" });
+      doc.setFontSize(14);
+      doc.text(`Final Score: ${total_score}`, 105, 42, { align: "center" });
+
+      const tableColumn = [
+        "#",
+        "Question",
+        "Your Answer",
+        "Correct Answer",
+        "Result",
+      ];
+      const tableRows = details.map((item, index) => [
+        index + 1,
+        item.generated_question,
+        item.student_answer || "Not Answered",
+        item.correct_answer,
+        item.is_correct ? "Correct" : "Incorrect",
+      ]);
+
+      autoTable(doc,{
+        head: [tableColumn],
+        body: tableRows,
+        startY: 55,
+        theme: "grid",
+        headStyles: { fillColor: [0, 83, 100] },
+        columnStyles: { 0: { cellWidth: 8 }, 4: { cellWidth: 20 } },
+        didParseCell: (data) => {
+          if (data.section === "body" && data.column.index === 4) {
+            if (data.cell.raw === "Correct") {
+              data.cell.styles.textColor = [0, 128, 0];
+            } else {
+              data.cell.styles.textColor = [255, 0, 0];
+            }
+          }
+        },
+      });
+
+      doc.save(
+        `Results_${test_title.replace(/ /g, "_")}_${student_roll_number}.pdf`
+      );
+    } catch (error) {
+      console.error("Error generating student PDF:", error);
+      setError("Failed to generate student PDF report.");
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const getStatusBadge = (status) => {
@@ -277,7 +345,6 @@ const TestsManager = () => {
 
   return (
     <div className="p-6">
-      {/* --- Main page content, no changes needed here --- */}
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-siemens-secondary">
@@ -289,7 +356,7 @@ const TestsManager = () => {
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
-          className="flex items-center space-x-2 px-4 py-2 rounded-lg text-white bg-siemens-primary hover:bg-siemens-primary-dark disabled:bg-siemens-primary-light disabled:cursor-not-allowed transition-colors"
+          className="flex items-center space-x-2 px-4 py-2 rounded-lg text-white bg-siemens-primary hover:bg-siemens-primary-dark disabled:opacity-50"
           disabled={Object.keys(questionsBySubject).length === 0}
         >
           <Plus size={18} />
@@ -315,12 +382,10 @@ const TestsManager = () => {
           <Loader2 className="h-8 w-8 animate-spin text-siemens-primary" />
         </div>
       ) : tests.length === 0 ? (
-        <div className="bg-white rounded-xl shadow-sm border border-siemens-primary-light p-8 text-center">
-          <ClipboardList className="h-12 w-12 text-siemens-secondary-light mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-siemens-secondary mb-2">
-            No Tests Found
-          </h3>
-          <p className="text-siemens-secondary-light mb-4">
+        <div className="bg-white rounded-xl shadow-sm border p-8 text-center">
+          <ClipboardList className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium">No Tests Found</h3>
+          <p className="text-gray-500 mb-4">
             Create your first test to get started.
           </p>
         </div>
@@ -329,28 +394,25 @@ const TestsManager = () => {
           {tests.map((test) => (
             <div
               key={test.id}
-              className="bg-white rounded-xl shadow-sm border border-siemens-primary-light p-4"
+              className="bg-white rounded-xl shadow-sm border p-4"
             >
               <div className="flex justify-between items-start">
                 <div>
                   <div className="flex items-center space-x-3 mb-2">
                     {getStatusBadge(test.status)}
-                    {/* MODIFIED: Display the correct number of questions for the test */}
-                    <span className="text-sm text-siemens-secondary-light">
+                    <span className="text-sm text-gray-500">
                       {test.number_of_questions} questions
                     </span>
                   </div>
-                  <h3 className="text-lg font-semibold text-siemens-secondary">
-                    {test.title}
-                  </h3>
+                  <h3 className="text-lg font-semibold">{test.title}</h3>
                   {test.description && (
-                    <p className="text-sm text-siemens-secondary-light mt-1 max-w-prose">
+                    <p className="text-sm text-gray-600 mt-1 max-w-prose">
                       {test.description}
                     </p>
                   )}
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 my-4 text-sm text-siemens-secondary-light">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 my-4 text-sm text-gray-600">
                 <div className="flex items-center space-x-2">
                   <Clock className="h-4 w-4" />{" "}
                   <span>{test.duration_minutes} minutes</span>
@@ -367,15 +429,15 @@ const TestsManager = () => {
                   </span>
                 </div>
               </div>
-              <div className="flex justify-between items-center pt-3 border-t border-siemens-primary-light">
-                <div className="text-xs text-siemens-secondary-light">
+              <div className="flex justify-between items-center pt-3 border-t">
+                <div className="text-xs text-gray-500">
                   Created: {new Date(test.created_at).toLocaleDateString()}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {test.status === "draft" && (
                     <button
                       onClick={() => updateTestStatus(test.id, "active")}
-                      className="flex items-center space-x-1 text-sm text-green-700 hover:bg-green-50 px-3 py-1.5 rounded-lg transition-colors"
+                      className="flex items-center space-x-1 text-sm text-green-700 hover:bg-green-50 px-3 py-1.5 rounded-lg"
                       disabled={actionLoading}
                     >
                       <Play className="h-4 w-4" /> <span>Activate</span>
@@ -385,13 +447,13 @@ const TestsManager = () => {
                     <>
                       <button
                         onClick={() => copyTestLink(test.test_link)}
-                        className="flex items-center space-x-1 text-sm text-siemens-primary hover:bg-siemens-primary-10 px-3 py-1.5 rounded-lg transition-colors"
+                        className="flex items-center space-x-1 text-sm text-siemens-primary hover:bg-siemens-primary-10 px-3 py-1.5 rounded-lg"
                       >
                         <Share2 className="h-4 w-4" /> <span>Share Link</span>
                       </button>
                       <button
                         onClick={() => updateTestStatus(test.id, "completed")}
-                        className="flex items-center space-x-1 text-sm text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors"
+                        className="flex items-center space-x-1 text-sm text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-lg"
                         disabled={actionLoading}
                       >
                         <Square className="h-4 w-4" /> <span>End Test</span>
@@ -400,7 +462,7 @@ const TestsManager = () => {
                   )}
                   <button
                     onClick={() => viewResults(test)}
-                    className="flex items-center space-x-1 text-sm text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors"
+                    className="flex items-center space-x-1 text-sm text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg"
                   >
                     <Eye className="h-4 w-4" /> <span>Results</span>
                   </button>
@@ -411,7 +473,6 @@ const TestsManager = () => {
         </div>
       )}
 
-      {/* --- MODIFIED CREATE TEST MODAL --- */}
       {showCreateModal && (
         <Modal
           onClose={() => setShowCreateModal(false)}
@@ -420,7 +481,7 @@ const TestsManager = () => {
           <form onSubmit={handleCreateTest} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-siemens-secondary mb-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Test Title
                 </label>
                 <input
@@ -430,11 +491,11 @@ const TestsManager = () => {
                   onChange={(e) =>
                     setFormData({ ...formData, title: e.target.value })
                   }
-                  className="w-full px-3 py-2 border border-siemens-primary-light rounded-lg focus:ring-2 focus:ring-siemens-primary focus:border-transparent"
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-siemens-primary"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-siemens-secondary mb-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Duration (minutes)
                 </label>
                 <input
@@ -448,12 +509,12 @@ const TestsManager = () => {
                       duration_minutes: parseInt(e.target.value),
                     })
                   }
-                  className="w-full px-3 py-2 border border-siemens-primary-light rounded-lg focus:ring-2 focus:ring-siemens-primary focus:border-transparent"
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-siemens-primary"
                 />
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-siemens-secondary mb-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
                 Description (Optional)
               </label>
               <textarea
@@ -462,12 +523,12 @@ const TestsManager = () => {
                   setFormData({ ...formData, description: e.target.value })
                 }
                 rows="3"
-                className="w-full px-3 py-2 border border-siemens-primary-light rounded-lg focus:ring-2 focus:ring-siemens-primary focus:border-transparent"
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-siemens-primary"
               ></textarea>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-siemens-secondary mb-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Marks per Question
                 </label>
                 <input
@@ -481,13 +542,11 @@ const TestsManager = () => {
                       marks_per_question: parseInt(e.target.value),
                     })
                   }
-                  className="w-full px-3 py-2 border border-siemens-primary-light rounded-lg focus:ring-2 focus:ring-siemens-primary focus:border-transparent"
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-siemens-primary"
                 />
               </div>
-
-              {/* NEW: Input for Number of Questions */}
               <div>
-                <label className="block text-sm font-medium text-siemens-secondary mb-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Number of Questions for Test
                 </label>
                 <input
@@ -502,19 +561,18 @@ const TestsManager = () => {
                       number_of_questions: parseInt(e.target.value) || 0,
                     })
                   }
-                  className="w-full px-3 py-2 border border-siemens-primary-light rounded-lg focus:ring-2 focus:ring-siemens-primary focus:border-transparent"
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-siemens-primary"
                 />
-                {/* NEW: Validation Message */}
                 {!isFormValid && formData.question_ids.length > 0 && (
                   <p className="text-xs text-red-600 mt-1">
-                    Must be a positive number and not more than the number of
-                    selected questions.
+                    Must be a positive number and not more than selected
+                    questions.
                   </p>
                 )}
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-siemens-secondary mb-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
                 Select Questions from Bank ({formData.question_ids.length}{" "}
                 selected)
               </label>
@@ -536,35 +594,26 @@ const TestsManager = () => {
                 )}
               </div>
             </div>
-            <div className="flex justify-end space-x-3 pt-4 border-t border-siemens-primary-light">
+            <div className="flex justify-end space-x-3 pt-4 border-t">
               <button
                 type="button"
                 onClick={() => setShowCreateModal(false)}
-                className="px-4 py-2 text-siemens-secondary border border-gray-300 rounded-lg hover:bg-gray-50"
+                className="px-4 py-2 border rounded-lg hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                // MODIFIED: Updated disabled logic to include form validation
                 disabled={actionLoading || !isFormValid}
-                className="px-4 py-2 text-white rounded-lg transition-colors bg-siemens-primary hover:bg-siemens-primary-dark disabled:bg-siemens-primary-light"
+                className="px-4 py-2 text-white rounded-lg bg-siemens-primary hover:bg-siemens-primary-dark disabled:opacity-50"
               >
-                {actionLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2 inline" />
-                    Creating...
-                  </>
-                ) : (
-                  "Create Test"
-                )}
+                {actionLoading ? "Creating..." : "Create Test"}
               </button>
             </div>
           </form>
         </Modal>
       )}
 
-      {/* --- Results Modal, no changes needed here --- */}
       {showResultsModal && (
         <Modal
           onClose={() => setShowResultsModal(false)}
@@ -575,45 +624,56 @@ const TestsManager = () => {
               onClick={() =>
                 downloadResultsAsCSV(currentResults, currentTestTitle)
               }
-              className="flex items-center text-sm bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 disabled:bg-green-300"
+              className="flex items-center text-sm bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 disabled:opacity-50"
               disabled={currentResults.length === 0}
             >
-              <Download size={16} className="mr-2" /> Download CSV
+              <Download size={16} className="mr-2" /> Download Summary (CSV)
             </button>
           </div>
           <div className="max-h-[60vh] overflow-y-auto">
-            {currentResults.length > 0 ? (
-              <div className="border border-siemens-primary-light rounded-lg overflow-hidden">
-                <div className="grid grid-cols-4 sm:grid-cols-4 gap-4 p-3 font-semibold bg-gray-50 text-siemens-secondary">
+            {actionLoading ? (
+              <div className="flex justify-center items-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-siemens-primary" />
+                <span className="ml-3">Generating Report...</span>
+              </div>
+            ) : currentResults.length > 0 ? (
+              <div className="border rounded-lg overflow-hidden">
+                <div className="grid grid-cols-5 gap-4 p-3 font-semibold bg-gray-50">
                   <div>Student Name</div>
                   <div>Roll Number</div>
-                  <div>Score</div>
-                  <div>Submitted</div>
+                  <div className="text-center">Score</div>
+                  <div className="text-center">Submitted</div>
+                  <div className="text-center">Actions</div>
                 </div>
-                <div className="divide-y divide-siemens-primary-light">
+                <div className="divide-y">
                   {currentResults.map((result) => (
                     <div
                       key={result.id}
-                      className="grid grid-cols-4 sm:grid-cols-4 gap-4 p-3"
+                      className="grid grid-cols-5 gap-4 p-3 items-center"
                     >
-                      <div className="text-siemens-secondary font-medium">
-                        {result.student_name}
-                      </div>
-                      <div className="text-siemens-secondary-light">
-                        {result.student_roll_number}
-                      </div>
-                      <div className="font-medium text-siemens-primary">
+                      <div className="font-medium">{result.student_name}</div>
+                      <div>{result.student_roll_number}</div>
+                      <div className="font-medium text-siemens-primary text-center">
                         {result.total_score}
                       </div>
-                      <div className="text-siemens-secondary-light text-sm">
+                      <div className="text-sm text-center">
                         {new Date(result.end_time).toLocaleString()}
+                      </div>
+                      <div className="text-center">
+                        <button
+                          onClick={() => handleDownloadStudentPdf(result.id)}
+                          className="p-1.5 text-red-600 hover:bg-red-100 rounded-full"
+                          title="Download Detailed PDF Report"
+                        >
+                          <Download size={18} />
+                        </button>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
             ) : (
-              <p className="text-center text-siemens-secondary-light py-8">
+              <p className="text-center text-gray-500 py-8">
                 No results have been submitted for this test yet.
               </p>
             )}
