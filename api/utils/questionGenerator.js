@@ -37,9 +37,8 @@ function generateQuestionForStudent(questionTemplate, rollNumber, questionIndex)
   
   let distractorAnswers = distractorFormulas
     .map(formula => evaluateFormula(formula, generatedValues))
-    .filter(opt => opt !== null && opt !== correctAnswer); // Filter out nulls and duplicates of correct answer
+    .filter(opt => opt !== null && opt !== correctAnswer); 
 
-  // --- FIX: Ensure there are always 3 distractors ---
   if (distractorAnswers.length < 3) {
     const fallbackDistractors = [
       correctAnswer + rng.nextInt(1, 10),
@@ -47,7 +46,6 @@ function generateQuestionForStudent(questionTemplate, rollNumber, questionIndex)
       correctAnswer * 2,
       Math.round(correctAnswer / 2)
     ];
-    // Add fallback options that are not duplicates
     for (const fallback of fallbackDistractors) {
       if (distractorAnswers.length < 3 && !distractorAnswers.includes(fallback) && fallback !== correctAnswer) {
         distractorAnswers.push(fallback);
@@ -65,9 +63,6 @@ function generateQuestionForStudent(questionTemplate, rollNumber, questionIndex)
     options: shuffledOptions.map(opt => opt.toString())
   };
 }
-
-// ... (rest of the helper functions: hashCode, SeededRandom, evaluateFormula, shuffleArray)
-// ... (They remain the same as before)
 
 function hashCode(str) {
   let hash = 0;

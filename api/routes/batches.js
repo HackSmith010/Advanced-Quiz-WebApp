@@ -33,7 +33,6 @@ router.post("/", authenticateToken, async (req, res) => {
     const result = await db.query(query, [name, req.user.userId]);
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    // Handle potential unique constraint violation for batch name
     if (error.code === "23505") {
       return res
         .status(409)
@@ -61,7 +60,6 @@ router.get("/:batchId/students", authenticateToken, async (req, res) => {
   }
 });
 
-// MODIFIED: This route now handles creating a new student and adding them to the batch.
 router.post("/:batchId/students", authenticateToken, async (req, res) => {
   const { batchId } = req.params;
   const { name, roll_number, email } = req.body;
@@ -70,7 +68,6 @@ router.post("/:batchId/students", authenticateToken, async (req, res) => {
   try {
     await client.query("BEGIN");
 
-    // Step 1: Insert the new student and get their new ID back.
     const studentInsertQuery = `
             INSERT INTO students (name, roll_number, email, teacher_id)
             VALUES ($1, $2, $3, $4)
@@ -84,7 +81,6 @@ router.post("/:batchId/students", authenticateToken, async (req, res) => {
     ]);
     const newStudentId = studentResult.rows[0].id;
 
-    // Step 2: Link the new student to the batch.
     const associationQuery = `
             INSERT INTO student_batches (student_id, batch_id)
             VALUES ($1, $2)
@@ -103,7 +99,6 @@ router.post("/:batchId/students", authenticateToken, async (req, res) => {
     console.error("Error creating and adding student to batch:", error);
 
     if (error.code === "23505") {
-      // Unique violation (e.g., duplicate roll number)
       return res
         .status(409)
         .json({ error: "A student with this roll number already exists." });
@@ -142,7 +137,6 @@ router.delete(
             DELETE FROM student_batches 
             WHERE batch_id = $1 AND student_id = $2
         `;
-      // We also need to check that the teacher owns this student/batch combo
       const verificationQuery = `
             SELECT b.teacher_id FROM batches b 
             JOIN student_batches sb ON b.id = sb.batch_id
@@ -159,7 +153,6 @@ router.delete(
         return res.status(403).json({ error: "Permission denied." });
       }
 
-      // If verification passes, then delete
       const result = await db.query(query, [batchId, studentId]);
       if (result.rowCount === 0) {
         return res

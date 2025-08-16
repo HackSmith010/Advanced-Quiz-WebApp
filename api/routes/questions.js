@@ -34,7 +34,6 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
-// --- MODIFIED: This route now returns questions grouped by subject ---
 router.get('/approved', authenticateToken, async (req, res) => {
   try {
     const query = `
@@ -46,7 +45,6 @@ router.get('/approved', authenticateToken, async (req, res) => {
     `;
     const result = await db.query(query, [req.user.userId]);
 
-    // Group the questions by subject name in JavaScript
     const groupedBySubject = result.rows.reduce((acc, question) => {
       const subject = question.subject_name;
       if (!acc[subject]) {

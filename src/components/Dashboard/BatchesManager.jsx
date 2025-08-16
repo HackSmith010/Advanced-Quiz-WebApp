@@ -14,7 +14,6 @@ import {
   Loader2,
 } from "lucide-react";
 
-// Reusable Modal Component
 const Modal = ({ children, onClose, title }) => (
   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
     <div className="bg-white p-6 rounded-xl w-full max-w-md relative shadow-lg border border-siemens-primary-light">
@@ -34,7 +33,6 @@ const Modal = ({ children, onClose, title }) => (
   </div>
 );
 
-// Confirmation Modal for Deletions
 const ConfirmationModal = ({
   isOpen,
   onClose,
@@ -192,7 +190,6 @@ const BatchesManager = () => {
         fetchBatches();
         setSelectedBatch(null);
       } else if (itemToDelete.type === "student_from_batch") {
-        // This is the corrected logic to permanently delete the student.
         await axios.delete(`/api/students/${itemToDelete.data.id}`);
         if (selectedBatch) {
           handleSelectBatch(selectedBatch);

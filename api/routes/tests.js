@@ -43,6 +43,7 @@ router.post("/", authenticateToken, async (req, res) => {
       marks_per_question,
       question_ids,
       number_of_questions, 
+      max_attempts,
     } = req.body;
     const testLink = uuidv4();
 
@@ -58,10 +59,10 @@ router.post("/", authenticateToken, async (req, res) => {
 
     await client.query("BEGIN");
 
-    const insertTestQuery = `
+     const insertTestQuery = `
       INSERT INTO tests (title, description, teacher_id, duration_minutes, 
-                        marks_per_question, test_link, status, number_of_questions)
-      VALUES ($1, $2, $3, $4, $5, $6, 'draft', $7)
+                        marks_per_question, test_link, status, number_of_questions, max_attempts)
+      VALUES ($1, $2, $3, $4, $5, $6, 'draft', $7, $8)
       RETURNING id
     `;
     const testResult = await client.query(insertTestQuery, [
@@ -71,7 +72,8 @@ router.post("/", authenticateToken, async (req, res) => {
       duration_minutes || 60,
       marks_per_question || 1,
       testLink,
-      number_of_questions, 
+      number_of_questions,
+      max_attempts || 1, 
     ]);
     const testId = testResult.rows[0].id;
 

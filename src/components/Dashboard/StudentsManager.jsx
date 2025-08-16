@@ -20,7 +20,6 @@ const StudentsManager = () => {
 
   const fetchStudents = async () => {
     try {
-      // MODIFIED: Changed to relative path for Vercel
       const response = await axios.get('/api/students');
       setStudents(response.data);
     } catch (error) {
@@ -36,10 +35,8 @@ const StudentsManager = () => {
 
     try {
       if (editingStudent) {
-        // MODIFIED: Changed to relative path for Vercel
         await axios.put(`/api/students/${editingStudent.id}`, formData);
       } else {
-        // MODIFIED: Changed to relative path for Vercel
         await axios.post('/api/students', formData);
       }
       
@@ -55,7 +52,6 @@ const StudentsManager = () => {
   const handleDelete = async (studentId) => {
     if (window.confirm('Are you sure you want to delete this student?')) {
       try {
-        // MODIFIED: Changed to relative path for Vercel
         await axios.delete(`/api/students/${studentId}`);
         fetchStudents();
       } catch (error) {

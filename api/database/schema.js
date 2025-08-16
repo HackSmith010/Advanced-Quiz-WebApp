@@ -81,16 +81,6 @@ const createTables = async () => {
     `);
 
     await client.query(`
-      CREATE TABLE IF NOT EXISTS pdf_uploads (
-        id SERIAL PRIMARY KEY,
-        display_name TEXT NOT NULL,
-        original_name TEXT NOT NULL,
-        teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    await client.query(`
       CREATE TABLE IF NOT EXISTS subjects (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
@@ -109,7 +99,7 @@ const createTables = async () => {
         correct_answer_formula TEXT NOT NULL,
         distractor_formulas JSONB NOT NULL,
         category TEXT,
-        status TEXT DEFAULT 'pending_review',
+        status TEXT DEFAULT 'pending_review', -- 'pending_review', 'approved', 'rejected'
         teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         subject_id INTEGER REFERENCES subjects(id) ON DELETE SET NULL,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -124,9 +114,10 @@ const createTables = async () => {
         teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         duration_minutes INTEGER DEFAULT 60,
         marks_per_question INTEGER DEFAULT 1,
-        number_of_questions INTEGER, -- MODIFIED: This field is required by the new logic.
+        number_of_questions INTEGER,
+        max_attempts INTEGER DEFAULT 1 NOT NULL,
         test_link TEXT UNIQUE NOT NULL,
-        status TEXT DEFAULT 'draft',
+        status TEXT DEFAULT 'draft', -- 'draft', 'active', 'completed'
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -146,10 +137,11 @@ const createTables = async () => {
         student_id INTEGER REFERENCES students(id) ON DELETE SET NULL,
         student_name TEXT NOT NULL,
         student_roll_number TEXT NOT NULL,
+        attempt_number INTEGER DEFAULT 1 NOT NULL,
         start_time TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         end_time TIMESTAMPTZ,
         total_score INTEGER DEFAULT 0,
-        status TEXT DEFAULT 'in_progress',
+        status TEXT DEFAULT 'in_progress', -- 'in_progress', 'completed'
         tab_change_count INTEGER DEFAULT 0
       )
     `);

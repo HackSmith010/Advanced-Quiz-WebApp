@@ -1,6 +1,5 @@
 import { retryAsync } from './retryHelper.js';
 
-// This is the main function that will be called by your routes.
 export async function processQuestionsWithAI(text) {
   if (!process.env.GEMINI_API_KEY) {
     console.error('GEMINI_API_KEY not found. Unable to generate questions template.');
@@ -15,7 +14,6 @@ export async function processQuestionsWithAI(text) {
   }
 }
 
-// Function to call the Gemini API
 async function callGeminiAPI(text) {
   const apiKey = process.env.GEMINI_API_KEY;
   const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
@@ -88,7 +86,6 @@ async function callGeminiAPI(text) {
     throw new Error("No content received from Gemini API");
   }
 
-  // --- Multi-pass robust JSON parsing ---
   try {
     let jsonString = rawText;
     const startIndex = rawText.indexOf('<JSON_OUTPUT>');

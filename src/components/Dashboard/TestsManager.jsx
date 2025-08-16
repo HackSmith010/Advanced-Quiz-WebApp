@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import axios from "axios";
 import jsPDF from "jspdf";
-import autoTable from 'jspdf-autotable';
+import autoTable from "jspdf-autotable";
 import {
   Plus,
   ClipboardList,
@@ -22,17 +22,18 @@ import {
   CheckCircle,
 } from "lucide-react";
 
-// Reusable Modal Component
-const Modal = ({ children, onClose, title }) => (
+const Modal = ({ children, onClose, title, maxWidth = "4xl" }) => (
   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-    <div className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-lg border border-siemens-primary-light">
-      <div className="flex justify-between items-center p-4 border-b border-siemens-primary-light">
+    <div
+      className={`bg-white rounded-xl w-full max-w-${maxWidth} max-h-[90vh] flex flex-col shadow-lg border`}
+    >
+      <div className="flex justify-between items-center p-4 border-b">
         <h3 className="text-lg font-semibold text-siemens-secondary">
           {title}
         </h3>
         <button
           onClick={onClose}
-          className="p-1 rounded-full text-siemens-secondary-light hover:bg-siemens-primary-10 hover:text-siemens-primary"
+          className="p-1 rounded-full text-gray-400 hover:bg-gray-100"
         >
           <X size={20} />
         </button>
@@ -42,7 +43,6 @@ const Modal = ({ children, onClose, title }) => (
   </div>
 );
 
-// SubjectAccordion Component
 const SubjectAccordion = ({
   subjectName,
   questions,
@@ -51,18 +51,18 @@ const SubjectAccordion = ({
 }) => {
   const [isOpen, setIsOpen] = useState(true);
   return (
-    <div className="border border-siemens-primary-light rounded-lg">
+    <div className="border rounded-lg">
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex justify-between items-center p-3 bg-gray-50 hover:bg-gray-100 transition-colors"
+        className="w-full flex justify-between items-center p-3 bg-gray-50 hover:bg-gray-100"
       >
         <div className="flex items-center">
           <BookCopy size={16} className="mr-2 text-siemens-primary" />
           <span className="font-medium text-siemens-secondary">
             {subjectName}
           </span>
-          <span className="ml-2 text-xs text-siemens-secondary-light">
+          <span className="ml-2 text-xs text-gray-500">
             ({questions.length} available)
           </span>
         </div>
@@ -73,7 +73,7 @@ const SubjectAccordion = ({
           {questions.map((q) => (
             <label
               key={q.id}
-              className="flex items-start space-x-3 cursor-pointer p-2 hover:bg-siemens-primary-5 rounded"
+              className="flex items-start space-x-3 cursor-pointer p-2 hover:bg-siemens-primary-50 rounded"
             >
               <input
                 type="checkbox"
@@ -81,9 +81,7 @@ const SubjectAccordion = ({
                 onChange={() => onToggle(q.id)}
                 className="mt-1 h-4 w-4 text-siemens-primary border-gray-300 rounded focus:ring-siemens-primary"
               />
-              <p className="text-sm text-siemens-secondary-light">
-                {q.question_template}
-              </p>
+              <p className="text-sm text-gray-600">{q.question_template}</p>
             </label>
           ))}
         </div>
@@ -103,18 +101,31 @@ const TestsManager = () => {
   const [currentTestTitle, setCurrentTestTitle] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+
   const initialFormData = {
     title: "",
     description: "",
     duration_minutes: 60,
     marks_per_question: 1,
     number_of_questions: 10,
+    max_attempts: 1,
     question_ids: [],
   };
+
   const [formData, setFormData] = useState(initialFormData);
+
   const isFormValid =
     formData.question_ids.length >= formData.number_of_questions &&
     formData.number_of_questions > 0;
+
+  const groupedResults = useMemo(() => {
+    if (!currentResults) return {};
+    return currentResults.reduce((acc, result) => {
+      const key = result.student_roll_number;
+      (acc[key] = acc[key] || []).push(result);
+      return acc;
+    }, {});
+  }, [currentResults]);
 
   useEffect(() => {
     fetchTests();
@@ -140,7 +151,6 @@ const TestsManager = () => {
       setQuestionsBySubject(response.data);
     } catch (error) {
       console.error("Error fetching approved questions:", error);
-      setError("Failed to load questions. Please try again.");
     }
   };
 
@@ -220,26 +230,28 @@ const TestsManager = () => {
     const headers = [
       "Student Name",
       "Roll Number",
+      "Attempt",
       "Score",
       "Submitted At",
       "Flags",
     ];
-    const csvRows = [
-      headers.join(","),
-      ...results.map((row) => {
-        let flags =
-          row.tab_change_count > 0
-            ? `${row.tab_change_count} tab change(s)`
-            : "None";
-        return [
+    const csvRows = [headers.join(",")];
+    results.forEach((row) => {
+      let flags =
+        row.tab_change_count > 0
+          ? `${row.tab_change_count} tab change(s)`
+          : "None";
+      csvRows.push(
+        [
           `"${row.student_name}"`,
           `"${row.student_roll_number}"`,
+          row.attempt_number,
           row.total_score,
           `"${new Date(row.end_time).toLocaleString()}"`,
           `"${flags}"`,
-        ].join(",");
-      }),
-    ];
+        ].join(",")
+      );
+    });
     const csvString = csvRows.join("\n");
     const blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
@@ -259,15 +271,19 @@ const TestsManager = () => {
         `/api/quiz/attempt/${attemptId}/details-for-pdf`
       );
       const details = response.data;
-
       if (!details || details.length === 0) {
         setError("Could not find details for this attempt.");
         return;
       }
 
       const doc = new jsPDF();
-      const { test_title, student_name, student_roll_number, total_score } =
-        details[0];
+      const {
+        test_title,
+        student_name,
+        student_roll_number,
+        total_score,
+        attempt_number,
+      } = details[0];
       const submissionTime = new Date(
         details[0].end_time || Date.now()
       ).toLocaleString();
@@ -278,7 +294,12 @@ const TestsManager = () => {
       doc.text(`Student: ${student_name} (${student_roll_number})`, 105, 30, {
         align: "center",
       });
-      doc.text(`Submitted: ${submissionTime}`, 105, 36, { align: "center" });
+      doc.text(
+        `Attempt #${attempt_number} - Submitted: ${submissionTime}`,
+        105,
+        36,
+        { align: "center" }
+      );
       doc.setFontSize(14);
       doc.text(`Final Score: ${total_score}`, 105, 42, { align: "center" });
 
@@ -297,7 +318,7 @@ const TestsManager = () => {
         item.is_correct ? "Correct" : "Incorrect",
       ]);
 
-      autoTable(doc,{
+      autoTable(doc, {
         head: [tableColumn],
         body: tableRows,
         startY: 55,
@@ -306,17 +327,18 @@ const TestsManager = () => {
         columnStyles: { 0: { cellWidth: 8 }, 4: { cellWidth: 20 } },
         didParseCell: (data) => {
           if (data.section === "body" && data.column.index === 4) {
-            if (data.cell.raw === "Correct") {
+            if (data.cell.raw === "Correct")
               data.cell.styles.textColor = [0, 128, 0];
-            } else {
-              data.cell.styles.textColor = [255, 0, 0];
-            }
+            else data.cell.styles.textColor = [255, 0, 0];
           }
         },
       });
 
       doc.save(
-        `Results_${test_title.replace(/ /g, "_")}_${student_roll_number}.pdf`
+        `Results_${student_name.replace(
+          / /g,
+          "_"
+        )}_Attempt_${attempt_number}.pdf`
       );
     } catch (error) {
       console.error("Error generating student PDF:", error);
@@ -402,6 +424,10 @@ const TestsManager = () => {
                     {getStatusBadge(test.status)}
                     <span className="text-sm text-gray-500">
                       {test.number_of_questions} questions
+                    </span>
+                    <span className="text-sm text-gray-500">
+                      {test.max_attempts}{" "}
+                      {test.max_attempts === 1 ? "attempt" : "attempts"}
                     </span>
                   </div>
                   <h3 className="text-lg font-semibold">{test.title}</h3>
@@ -526,7 +552,7 @@ const TestsManager = () => {
                 className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-siemens-primary"
               ></textarea>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Marks per Question
@@ -547,7 +573,7 @@ const TestsManager = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Number of Questions for Test
+                  Questions in Test
                 </label>
                 <input
                   type="number"
@@ -565,10 +591,27 @@ const TestsManager = () => {
                 />
                 {!isFormValid && formData.question_ids.length > 0 && (
                   <p className="text-xs text-red-600 mt-1">
-                    Must be a positive number and not more than selected
-                    questions.
+                    Must not exceed selected questions.
                   </p>
                 )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Max Attempts
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  value={formData.max_attempts}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      max_attempts: parseInt(e.target.value) || 1,
+                    })
+                  }
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-siemens-primary"
+                />
               </div>
             </div>
             <div>
@@ -636,41 +679,52 @@ const TestsManager = () => {
                 <Loader2 className="h-8 w-8 animate-spin text-siemens-primary" />
                 <span className="ml-3">Generating Report...</span>
               </div>
-            ) : currentResults.length > 0 ? (
-              <div className="border rounded-lg overflow-hidden">
-                <div className="grid grid-cols-5 gap-4 p-3 font-semibold bg-gray-50">
-                  <div>Student Name</div>
-                  <div>Roll Number</div>
-                  <div className="text-center">Score</div>
-                  <div className="text-center">Submitted</div>
-                  <div className="text-center">Actions</div>
-                </div>
-                <div className="divide-y">
-                  {currentResults.map((result) => (
-                    <div
-                      key={result.id}
-                      className="grid grid-cols-5 gap-4 p-3 items-center"
-                    >
-                      <div className="font-medium">{result.student_name}</div>
-                      <div>{result.student_roll_number}</div>
-                      <div className="font-medium text-siemens-primary text-center">
-                        {result.total_score}
-                      </div>
-                      <div className="text-sm text-center">
-                        {new Date(result.end_time).toLocaleString()}
-                      </div>
-                      <div className="text-center">
-                        <button
-                          onClick={() => handleDownloadStudentPdf(result.id)}
-                          className="p-1.5 text-red-600 hover:bg-red-100 rounded-full"
-                          title="Download Detailed PDF Report"
-                        >
-                          <Download size={18} />
-                        </button>
-                      </div>
+            ) : Object.keys(groupedResults).length > 0 ? (
+              <div className="space-y-4">
+                {Object.values(groupedResults).map((attempts, index) => (
+                  <div key={index} className="border rounded-lg">
+                    <div className="bg-gray-50 p-3 rounded-t-lg">
+                      <h4 className="font-semibold text-gray-800">
+                        {attempts[0].student_name}
+                      </h4>
+                      <p className="text-sm text-gray-500">
+                        Roll No: {attempts[0].student_roll_number}
+                      </p>
                     </div>
-                  ))}
-                </div>
+                    {attempts
+                      .sort((a, b) => a.attempt_number - b.attempt_number)
+                      .map((attempt) => (
+                        <div
+                          key={attempt.id}
+                          className="grid grid-cols-4 gap-4 p-3 items-center border-t"
+                        >
+                          <div className="font-medium text-gray-700">
+                            Attempt #{attempt.attempt_number}
+                          </div>
+                          <div>
+                            Score:{" "}
+                            <span className="font-bold text-siemens-primary">
+                              {attempt.total_score}
+                            </span>
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {new Date(attempt.end_time).toLocaleString()}
+                          </div>
+                          <div className="text-right">
+                            <button
+                              onClick={() =>
+                                handleDownloadStudentPdf(attempt.id)
+                              }
+                              className="p-1.5 text-red-600 hover:bg-red-100 rounded-full"
+                              title="Download PDF for this attempt"
+                            >
+                              <Download size={18} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                ))}
               </div>
             ) : (
               <p className="text-center text-gray-500 py-8">

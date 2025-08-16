@@ -12,6 +12,7 @@ import {
   Check,
   RotateCcw,
   AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 
 // Reusable Modal Component
@@ -37,7 +38,14 @@ const Modal = ({ children, onClose, title, maxWidth = "2xl" }) => (
 );
 
 // Confirmation Modal for Deletion
-const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message }) => {
+const ConfirmationModal = ({
+  isOpen,
+  onClose,
+  onConfirm,
+  title,
+  message,
+  confirmText = "Confirm",
+}) => {
   if (!isOpen) return null;
   return (
     <Modal onClose={onClose} title={title} maxWidth="md">
@@ -60,7 +68,7 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message }) => {
           onClick={onConfirm}
           className="px-4 py-2 text-sm font-medium rounded-lg bg-red-600 text-white hover:bg-red-700"
         >
-          Delete Permanently
+          {confirmText}
         </button>
       </div>
     </Modal>
@@ -76,6 +84,7 @@ const QuestionsManager = () => {
     name: "Pending Review",
   });
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [showSubjectModal, setShowSubjectModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -85,6 +94,7 @@ const QuestionsManager = () => {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
   const [pendingAssignments, setPendingAssignments] = useState({});
+  const [error, setError] = useState("");
 
   useEffect(() => {
     fetchSubjects();
@@ -104,7 +114,7 @@ const QuestionsManager = () => {
   };
 
   const fetchQuestions = async () => {
-    setLoading(true);
+    if (!isRefreshing) setLoading(true);
     setPendingAssignments({});
     try {
       const params = {};
@@ -119,12 +129,19 @@ const QuestionsManager = () => {
       console.error("Error fetching questions:", error);
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
+  };
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    fetchQuestions();
   };
 
   const handleCreateSubject = async (e) => {
     e.preventDefault();
     setActionLoading(true);
+    setError("");
     try {
       await axios.post("/api/subjects", { name: newSubjectName });
       fetchSubjects();
@@ -132,6 +149,14 @@ const QuestionsManager = () => {
       setNewSubjectName("");
     } catch (error) {
       console.error("Error creating subject", error);
+      if (error.response && error.response.status === 409) {
+        setError(
+          error.response.data.error ||
+            "A chapter with this name already exists."
+        );
+      } else {
+        setError("Failed to create chapter.");
+      }
     } finally {
       setActionLoading(false);
     }
@@ -216,8 +241,32 @@ const QuestionsManager = () => {
     setShowConfirmModal(true);
   };
 
+  const handleSoftDelete = async (questionId) => {
+    setActionLoading(true);
+    try {
+      await axios.put(`/api/questions/${questionId}/status`, {
+        status: "rejected",
+        subjectId: null,
+      });
+      fetchQuestions();
+      fetchSubjects();
+    } catch (error) {
+      console.error("Error moving question to rejected:", error);
+    } finally {
+      setActionLoading(false);
+      setShowConfirmModal(false);
+      setItemToDelete(null);
+    }
+  };
+
   const confirmDelete = async () => {
     if (!itemToDelete) return;
+
+    if (selectedView.type === "subject") {
+      handleSoftDelete(itemToDelete.id);
+      return;
+    }
+
     setActionLoading(true);
     try {
       await axios.delete(`/api/questions/${itemToDelete.id}`);
@@ -317,10 +366,20 @@ const QuestionsManager = () => {
 
         <div className="lg:col-span-3">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-4">
-            <div className="p-4 border-b">
+            <div className="p-4 border-b flex justify-between items-center">
               <h2 className="text-xl font-semibold text-siemens-secondary">
                 {selectedView.name}
               </h2>
+              <button
+                onClick={handleRefresh}
+                disabled={isRefreshing || loading}
+                className="p-2 text-gray-400 hover:bg-gray-100 rounded-full disabled:cursor-not-allowed"
+                title="Refresh Questions"
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
+                />
+              </button>
             </div>
           </div>
           {loading ? (
@@ -366,7 +425,11 @@ const QuestionsManager = () => {
                           <button
                             onClick={() => handleDeleteClick(q)}
                             className="p-2 text-red-600 hover:bg-red-100 rounded-lg"
-                            title="Delete Question"
+                            title={
+                              selectedView.type === "subject"
+                                ? "Move to Rejected"
+                                : "Delete Permanently"
+                            }
                           >
                             <Trash2 size={16} />
                           </button>
@@ -438,8 +501,14 @@ const QuestionsManager = () => {
         <Modal
           onClose={() => setShowSubjectModal(false)}
           title="Create New Chapter"
+          maxWidth="md"
         >
           <form onSubmit={handleCreateSubject} className="space-y-4">
+            {error && (
+              <div className="bg-red-100 text-red-700 p-3 rounded-md text-sm">
+                {error}
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-siemens-secondary mb-2">
                 Chapter Name
@@ -449,7 +518,7 @@ const QuestionsManager = () => {
                 value={newSubjectName}
                 onChange={(e) => setNewSubjectName(e.target.value)}
                 className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-siemens-primary"
-                placeholder="e.g., Physics, Mathematics"
+                placeholder="e.g., Speed , Trignometry.."
                 required
               />
             </div>
@@ -477,7 +546,7 @@ const QuestionsManager = () => {
         <Modal
           onClose={() => setShowEditModal(false)}
           title="Edit Question"
-          maxWidth="2xl"
+          maxWidth = "max-w-xl"
         >
           <form onSubmit={handleUpdateQuestion} className="space-y-4">
             <div>
@@ -576,8 +645,19 @@ const QuestionsManager = () => {
         isOpen={showConfirmModal}
         onClose={() => setShowConfirmModal(false)}
         onConfirm={confirmDelete}
-        title="Delete Question"
-        message={`Are you sure you want to permanently delete this question? This action cannot be undone.`}
+        title={
+          selectedView.type === "subject"
+            ? "Remove Question"
+            : "Delete Question"
+        }
+        message={
+          selectedView.type === "subject"
+            ? "Are you sure you want to remove this question from the chapter? It will be moved to the 'Rejected' section for later review."
+            : "Are you sure you want to permanently delete this question? This action cannot be undone."
+        }
+        confirmText={
+          selectedView.type === "subject" ? "Remove" : "Delete Permanently"
+        }
       />
     </div>
   );

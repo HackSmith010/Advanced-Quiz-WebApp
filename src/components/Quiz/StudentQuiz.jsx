@@ -1,119 +1,225 @@
-import React, { useState, useEffect, useRef } from "react";
-import { useParams } from "react-router-dom";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import jsPDF from "jspdf";
-import html2canvas from "html2canvas"; 
+import html2canvas from "html2canvas";
 import {
-  Clock,
+  Loader2,
+  AlertTriangle,
   User,
   Hash,
   CheckCircle,
-  AlertTriangle,
+  Play,
   ChevronLeft,
   ChevronRight,
-  Loader2,
+  Clock,
 } from "lucide-react";
 
-const WarningModal = ({ isOpen, onConfirm }) => {
-  if (!isOpen) return null;
+// Sub-component for the pre-quiz "Lobby" view
+const StudentLobby = ({
+  test,
+  attempts,
+  onStart,
+  studentInfo,
+  loading,
+  error,
+}) => {
+  const canRetake = attempts.length < test.max_attempts;
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl text-center">
-        <div className="flex justify-center mb-4">
-          <div className="p-3 bg-yellow-100 rounded-full">
-            <AlertTriangle className="h-8 w-8 text-yellow-600" />
-          </div>
+    <div className="max-w-2xl w-full">
+      <div className="bg-white rounded-xl shadow-lg p-8 border">
+        <div className="text-center mb-6">
+          <h1 className="text-2xl font-bold text-siemens-secondary">
+            {test.title}
+          </h1>
+          <p className="text-gray-600 mt-2">Welcome, {studentInfo.name}</p>
         </div>
-        <h3 className="text-xl font-semibold text-gray-900 mb-2">
-          Warning: Tab Change Detected
-        </h3>
-        <p className="text-gray-600 mb-6">
-          This is your first and only warning. If you switch tabs again, your
-          test will be submitted automatically.
-        </p>
-        <button
-          onClick={onConfirm}
-          type="button"
-          className="w-full bg-siemens-primary text-white py-2.5 rounded-lg hover:bg-siemens-primary-dark transition-colors"
-        >
-          I Understand
-        </button>
+
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4 text-center">
+            {error}
+          </div>
+        )}
+
+        <div className="bg-gray-50 rounded-lg p-4 mb-6 border">
+          <h3 className="font-semibold text-gray-800 mb-2">
+            Your Past Attempts
+          </h3>
+          {attempts.length > 0 ? (
+            <table className="w-full text-sm text-left">
+              <thead className="text-gray-500">
+                <tr>
+                  <th className="py-2 px-3 font-normal">Attempt</th>
+                  <th className="py-2 px-3 font-normal">Score</th>
+                  <th className="py-2 px-3 font-normal">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {attempts.map((att) => (
+                  <tr key={att.id} className="border-t">
+                    <td className="py-2 px-3 font-medium">
+                      #{att.attempt_number}
+                    </td>
+                    <td className="py-2 px-3">{att.total_score}</td>
+                    <td className="py-2 px-3">
+                      {new Date(att.end_time).toLocaleDateString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="text-sm text-gray-500 p-2">
+              You have not attempted this test yet.
+            </p>
+          )}
+        </div>
+
+        {canRetake ? (
+          <button
+            onClick={onStart}
+            disabled={loading}
+            className="w-full bg-siemens-primary text-white py-3 rounded-lg font-semibold flex items-center justify-center disabled:opacity-50 transition-colors"
+          >
+            {loading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <>
+                <Play className="h-5 w-5 mr-2" />
+                {attempts.length > 0 ? "Retake Test" : "Start Test"} (
+                {attempts.length + 1}/{test.max_attempts})
+              </>
+            )}
+          </button>
+        ) : (
+          <p className="text-center font-medium text-red-600 p-4 border bg-red-50 rounded-lg">
+            You have reached the maximum number of attempts for this test.
+          </p>
+        )}
       </div>
     </div>
   );
 };
 
+// Main Student Quiz Component
 const StudentQuiz = () => {
   const { testLink } = useParams();
+  const [view, setView] = useState("login"); // 'login', 'lobby', 'quiz', 'submitted'
   const [testInfo, setTestInfo] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-
   const [selectedAnswers, setSelectedAnswers] = useState({});
-
   const [timeRemaining, setTimeRemaining] = useState(null);
-  const [showLoginForm, setShowLoginForm] = useState(true);
-
-  const [isSubmitted, setIsSubmitted] = useState(false);
-  const [finalScore, setFinalScore] = useState(null);
-  const [forcedSubmission, setForcedSubmission] = useState(false);
-
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [studentInfo, setStudentInfo] = useState({ name: "", rollNumber: "" });
-
+  const [pastAttempts, setPastAttempts] = useState([]);
+  const [attemptNumber, setAttemptNumber] = useState(1);
+  const [finalResult, setFinalResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [tabChangeCount, setTabChangeCount] = useState(0);
-  const [showWarningModal, setShowWarningModal] = useState(false);
-
+  const [showWarning, setShowWarning] = useState(false);
   const resultsRef = useRef();
 
+  const handleSubmitTest = useCallback(
+    async (isForced = false) => {
+      if (view !== "quiz" || finalResult) return; // Prevent multiple submissions
 
-  useEffect(() => {
-    const fetchTestDetails = async () => {
+      if (
+        !isForced &&
+        !window.confirm("Are you sure you want to submit your test?")
+      ) {
+        return;
+      }
+
+      setLoading(true);
       try {
-        setLoading(true);
-        const response = await axios.get(`/api/quiz/test/${testLink}`);
-        setTestInfo(response.data);
+        const response = await axios.post(
+          `/api/quiz/attempt/${testLink}/submit`,
+          {
+            name: studentInfo.name,
+            roll_number: studentInfo.rollNumber,
+            answers: selectedAnswers,
+            attempt_number: attemptNumber,
+          }
+        );
+        setFinalResult({
+          score: response.data.score,
+          attemptId: response.data.attemptId,
+          forced: isForced,
+        });
+        setView("submitted");
       } catch (err) {
-        setError("Could not load test details. The link may be invalid.");
+        setError(
+          "Failed to submit test. Please check your connection and try again."
+        );
+        setView("lobby");
       } finally {
         setLoading(false);
       }
-    };
-    fetchTestDetails();
-  }, [testLink]);
+    },
+    [view, finalResult, testLink, studentInfo, selectedAnswers, attemptNumber]
+  );
 
+  // Enhanced Anti-Cheating and Timer Effects
   useEffect(() => {
-    if (timeRemaining > 0 && !isSubmitted) {
-      const timer = setTimeout(() => setTimeRemaining(timeRemaining - 1), 1000);
-      return () => clearTimeout(timer);
-    }
-    if (timeRemaining === 0 && !isSubmitted && questions.length > 0) {
-      handleSubmitTest(true); 
-    }
-  }, [timeRemaining, isSubmitted, questions]);
+    if (view !== "quiz") return;
 
-  useEffect(() => {
+    const preventDefault = (e) => e.preventDefault();
+    const eventsToDisable = ["contextmenu", "copy", "paste"];
+    eventsToDisable.forEach((event) =>
+      document.addEventListener(event, preventDefault)
+    );
+
     const handleVisibilityChange = () => {
-      if (document.hidden && questions.length > 0 && !isSubmitted) {
+      if (document.hidden) {
         const newCount = tabChangeCount + 1;
         setTabChangeCount(newCount);
-
-        if (newCount === 1) {
-          setShowWarningModal(true); 
-        } else if (newCount >= 2) {
-          handleSubmitTest(true);
-        }
+        if (newCount === 1) setShowWarning(true);
+        else if (newCount >= 2) handleSubmitTest(true);
       }
     };
-
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () =>
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [questions, isSubmitted, tabChangeCount]);
 
-  const handleStartTest = async (e) => {
+    return () => {
+      eventsToDisable.forEach((event) =>
+        document.removeEventListener(event, preventDefault)
+      );
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [view, tabChangeCount, handleSubmitTest]);
+
+  useEffect(() => {
+    if (timeRemaining === 0 && view === "quiz") {
+      handleSubmitTest(true);
+    }
+    if (timeRemaining > 0 && view === "quiz") {
+      const timer = setTimeout(() => setTimeRemaining((t) => t - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [timeRemaining, view, handleSubmitTest]);
+
+  const handleLogin = async (e) => {
     e.preventDefault();
+    setLoading(true);
+    setError("");
+    try {
+      const res = await axios.get(`/api/quiz/test/${testLink}`, {
+        params: { roll_number: studentInfo.rollNumber, name: studentInfo.name },
+      });
+      setTestInfo(res.data.test);
+      setPastAttempts(res.data.attempts);
+      setView("lobby");
+    } catch (err) {
+      setError(
+        err.response?.data?.error ||
+          "Failed to validate your details. Please check and try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStartAttempt = async () => {
     setLoading(true);
     setError("");
     try {
@@ -121,76 +227,42 @@ const StudentQuiz = () => {
         student_name: studentInfo.name,
         roll_number: studentInfo.rollNumber,
       });
-
       setQuestions(response.data.questions);
       setTimeRemaining(response.data.duration_minutes * 60);
-      setShowLoginForm(false);
+      setAttemptNumber(response.data.attempt_number);
+      setCurrentQuestionIndex(0);
+      setSelectedAnswers({});
+      setTabChangeCount(0); // Reset for new attempt
+      setView("quiz");
     } catch (err) {
-      setError(
-        err.response?.data?.error ||
-          "An error occurred while starting the test."
-      );
+      setError(err.response?.data?.error || "Could not start a new attempt.");
+      setView("lobby");
     } finally {
       setLoading(false);
     }
   };
 
   const handleAnswerSelect = (questionId, selectedOption) => {
-    setSelectedAnswers((prev) => ({
-      ...prev,
-      [questionId]: selectedOption,
-    }));
-  };
-
-  const handleSubmitTest = async (isForced = false) => {
-    if (isSubmitted) return;
-
-    if (isForced) {
-      setForcedSubmission(true);
-    } else if (!window.confirm("Are you sure you want to submit your test?")) {
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const response = await axios.post(
-        `/api/quiz/attempt/${testLink}/submit`,
-        {
-          roll_number: studentInfo.rollNumber,
-          answers: selectedAnswers,
-        }
-      );
-
-      setFinalScore(response.data.score);
-      setIsSubmitted(true); 
-    } catch (err) {
-      setError("Failed to submit the test. Please check your connection.");
-    } finally {
-      setLoading(false);
-    }
+    setSelectedAnswers((prev) => ({ ...prev, [questionId]: selectedOption }));
   };
 
   const handleDownloadPdf = async () => {
     const resultsElement = resultsRef.current;
-    if (!resultsElement) {
-      alert("Could not find results to download. Please wait a moment.");
-      return;
-    }
-
+    if (!resultsElement) return;
     setLoading(true);
     try {
       const canvas = await html2canvas(resultsElement, { scale: 2 });
       const imgData = canvas.toDataURL("image/png");
-
       const pdf = new jsPDF("p", "mm", "a4");
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
       pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`Quiz_Results_${studentInfo.rollNumber}.pdf`);
+      pdf.save(
+        `Quiz_Results_${studentInfo.rollNumber}_Attempt_${attemptNumber}.pdf`
+      );
     } catch (error) {
       console.error("PDF Generation Error:", error);
-      alert("Failed to generate PDF. Please try again.");
+      setError("Failed to generate PDF.");
     } finally {
       setLoading(false);
     }
@@ -202,289 +274,224 @@ const StudentQuiz = () => {
     return `${minutes}:${secs < 10 ? "0" : ""}${secs}`;
   };
 
-
-  if (loading && !isSubmitted) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100">
-        <Loader2 className="h-12 w-12 animate-spin text-siemens-primary" />
-      </div>
-    );
-  }
-
-  if (showLoginForm) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-siemens-primary-50 to-siemens-primary-10 flex items-center justify-center px-4">
-        <div className="max-w-md w-full">
-          <div className="bg-white rounded-xl shadow-lg p-8 border border-siemens-primary-light">
-            <div className="text-center mb-6">
-              <h1 className="text-2xl font-bold text-siemens-secondary">
-                {testInfo?.title}
+  const renderContent = () => {
+    switch (view) {
+      case "login":
+        return (
+          <div className="max-w-md w-full">
+            <div className="bg-white rounded-xl shadow-lg p-8 border">
+              <h1 className="text-2xl font-bold text-center mb-6">
+                Enter Test
               </h1>
-              <p className="text-siemens-secondary-light mt-2">
-                {testInfo?.description}
-              </p>
-            </div>
-
-            <div className="bg-siemens-primary-10 rounded-lg p-4 mb-6 border border-siemens-primary-light">
-              <h3 className="font-semibold text-siemens-secondary mb-2">
-                Test Information
-              </h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-siemens-secondary-light">
-                    Duration:
-                  </span>
-                  <span className="font-medium">
-                    {testInfo?.duration_minutes} minutes
-                  </span>
+              {error && (
+                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4">
+                  {error}
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-siemens-secondary-light">
-                    Questions:
-                  </span>
-                  <span className="font-medium">
-                    {testInfo?.number_of_questions}
-                  </span>{" "}
+              )}
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Full Name
+                  </label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      required
+                      value={studentInfo.name}
+                      onChange={(e) =>
+                        setStudentInfo({ ...studentInfo, name: e.target.value })
+                      }
+                      className="pl-10 w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-siemens-primary"
+                    />
+                  </div>
                 </div>
-              </div>
-            </div>
-
-            {error && (
-              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4">
-                {error}
-              </div>
-            )}
-
-            <form onSubmit={handleStartTest} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-siemens-secondary mb-2">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={studentInfo.name}
-                  onChange={(e) =>
-                    setStudentInfo({ ...studentInfo, name: e.target.value })
-                  }
-                  className="w-full px-3 py-3 border border-siemens-primary-light rounded-lg focus:ring-2 focus:ring-siemens-primary"
-                  placeholder="Enter your full name"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-siemens-secondary mb-2">
-                  Roll Number
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={studentInfo.rollNumber}
-                  onChange={(e) =>
-                    setStudentInfo({
-                      ...studentInfo,
-                      rollNumber: e.target.value,
-                    })
-                  }
-                  className="w-full px-3 py-3 border border-siemens-primary-light rounded-lg focus:ring-2 focus:ring-siemens-primary"
-                  placeholder="Enter your roll number"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-siemens-primary text-white py-3 rounded-lg hover:bg-siemens-primary-dark disabled:opacity-50"
-              >
-                {loading ? "Starting..." : "Start Test"}
-              </button>
-            </form>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // This is the results screen shown after submission.
-  if (isSubmitted) {
-    return (
-      <div className="min-h-screen bg-gray-100 py-12 px-4">
-        <div
-          ref={resultsRef}
-          className="max-w-4xl mx-auto bg-white p-8 rounded-xl shadow-lg"
-        >
-          <div className="text-center border-b pb-6 mb-6">
-            <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
-            <h1 className="text-3xl font-bold text-gray-800">
-              Test Submitted!
-            </h1>
-            {forcedSubmission && (
-              <p className="mt-2 text-lg text-red-600 font-semibold">
-                This test was submitted automatically due to a rule violation or
-                time expiration.
-              </p>
-            )}
-            <p className="text-gray-600 mt-2">
-              Thank you, {studentInfo.name}. Here is a summary of your attempt.
-            </p>
-          </div>
-          <div className="text-center my-6">
-            <p className="text-lg text-gray-600">Your Score</p>
-            <p className="text-5xl font-bold text-siemens-primary">
-              {finalScore}{" "}
-              <span className="text-3xl text-gray-500">
-                / {questions.length}
-              </span>
-            </p>
-          </div>
-          <div>
-            <h2 className="text-xl font-semibold mb-4">Your Answers</h2>
-            {questions.map((q, index) => (
-              <div key={q.id} className="mb-4 p-4 border rounded-lg">
-                <p className="font-semibold">
-                  Q{index + 1}: {q.question}
-                </p>
-                <p
-                  className={`mt-2 ${
-                    selectedAnswers[q.id] === q.correct_answer
-                      ? "text-green-600"
-                      : "text-red-600"
-                  }`}
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Roll Number
+                  </label>
+                  <div className="relative">
+                    <Hash className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      required
+                      value={studentInfo.rollNumber}
+                      onChange={(e) =>
+                        setStudentInfo({
+                          ...studentInfo,
+                          rollNumber: e.target.value,
+                        })
+                      }
+                      className="pl-10 w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-siemens-primary"
+                    />
+                  </div>
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-siemens-primary text-white py-3 rounded-lg font-semibold flex items-center justify-center disabled:opacity-50"
                 >
-                  Your answer: {selectedAnswers[q.id] || "Not Answered"}
-                </p>
-                {selectedAnswers[q.id] !== q.correct_answer && (
-                  <p className="text-blue-600">
-                    Correct answer: {q.correct_answer}
+                  {loading ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    "Proceed"
+                  )}
+                </button>
+              </form>
+            </div>
+          </div>
+        );
+      case "lobby":
+        return (
+          <StudentLobby
+            test={testInfo}
+            attempts={pastAttempts}
+            onStart={handleStartAttempt}
+            studentInfo={studentInfo}
+            loading={loading}
+            error={error}
+          />
+        );
+      case "quiz":
+        const currentQ = questions[currentQuestionIndex];
+        if (!currentQ)
+          return (
+            <Loader2 className="h-12 w-12 animate-spin text-siemens-primary" />
+          );
+        return (
+          <div className="max-w-4xl w-full">
+            <div className="bg-white shadow-sm sticky top-0 z-10 p-4 rounded-t-xl border-b">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h1 className="text-xl font-bold">{testInfo?.title}</h1>
+                  <p className="text-sm text-gray-500">
+                    Question {currentQuestionIndex + 1} of {questions.length}
                   </p>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="text-center mt-8">
-          <button
-            onClick={handleDownloadPdf}
-            disabled={loading}
-            className="bg-siemens-primary text-white py-3 px-6 rounded-lg hover:bg-siemens-primary-dark"
-          >
-            {loading ? "Generating PDF..." : "Download Results as PDF"}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // This is the main quiz interface.
-  if (questions.length > 0) {
-    const currentQ = questions[currentQuestionIndex];
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <WarningModal
-          isOpen={showWarningModal}
-          onConfirm={() => setShowWarningModal(false)}
-        />
-        {/* Header with timer and question count */}
-        <div className="bg-white shadow-sm sticky top-0 z-10">
-          <div className="max-w-4xl mx-auto p-4 flex justify-between items-center">
-            <div>
-              <h1 className="text-xl font-bold">{testInfo?.title}</h1>
-              <p className="text-sm text-gray-500">
-                Question {currentQuestionIndex + 1} of {questions.length}
-              </p>
-            </div>
-            <div
-              className={`text-2xl font-mono ${
-                timeRemaining <= 60 ? "text-red-500" : "text-gray-800"
-              }`}
-            >
-              <Clock className="inline-block h-6 w-6 mr-2" />
-              {formatTime(timeRemaining)}
-            </div>
-          </div>
-        </div>
-
-        {/* Question and Options */}
-        <div className="max-w-4xl mx-auto p-4 md:p-8">
-          <div className="bg-white p-8 rounded-xl shadow-md">
-            <h2 className="text-xl font-semibold text-gray-800 mb-6">
-              {currentQ.question}
-            </h2>
-            <div className="space-y-4">
-              {currentQ.options.map((option, index) => (
-                <label
-                  key={index}
-                  className={`flex items-center p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 ${
-                    selectedAnswers[currentQ.id] === option
-                      ? "border-siemens-primary bg-siemens-primary-50"
-                      : "border-gray-200 hover:border-siemens-primary-light"
+                </div>
+                <div
+                  className={`text-2xl font-mono flex items-center ${
+                    timeRemaining <= 60 ? "text-red-500" : "text-gray-800"
                   }`}
                 >
-                  <input
-                    type="radio"
-                    name={`question-${currentQ.id}`}
-                    value={option}
-                    checked={selectedAnswers[currentQ.id] === option}
-                    onChange={() => handleAnswerSelect(currentQ.id, option)}
-                    className="hidden" 
-                  />
-                  <span
-                    className={`w-5 h-5 rounded-full border-2 flex-shrink-0 mr-4 flex items-center justify-center ${
+                  <Clock className="inline-block h-6 w-6 mr-2" />
+                  {formatTime(timeRemaining)}
+                </div>
+              </div>
+            </div>
+            <div className="bg-white p-8 rounded-b-xl shadow-md">
+              <h2 className="text-xl font-semibold text-gray-800 mb-6">
+                {currentQ.question}
+              </h2>
+              <div className="space-y-4">
+                {currentQ.options.map((option, index) => (
+                  <label
+                    key={index}
+                    className={`flex items-center p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 ${
                       selectedAnswers[currentQ.id] === option
-                        ? "border-siemens-primary"
-                        : "border-gray-400"
+                        ? "border-siemens-primary bg-siemens-primary-50"
+                        : "border-gray-200 hover:border-siemens-primary-light"
                     }`}
                   >
-                    {selectedAnswers[currentQ.id] === option && (
-                      <span className="w-2.5 h-2.5 bg-siemens-primary rounded-full"></span>
-                    )}
-                  </span>
-                  <span>{option}</span>
-                </label>
-              ))}
+                    <input
+                      type="radio"
+                      name={`question-${currentQ.id}`}
+                      value={option}
+                      checked={selectedAnswers[currentQ.id] === option}
+                      onChange={() => handleAnswerSelect(currentQ.id, option)}
+                      className="hidden"
+                    />
+                    <span
+                      className={`w-5 h-5 rounded-full border-2 flex-shrink-0 mr-4 flex items-center justify-center ${
+                        selectedAnswers[currentQ.id] === option
+                          ? "border-siemens-primary"
+                          : "border-gray-400"
+                      }`}
+                    >
+                      {selectedAnswers[currentQ.id] === option && (
+                        <span className="w-2.5 h-2.5 bg-siemens-primary rounded-full"></span>
+                      )}
+                    </span>
+                    <span>{option}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="flex justify-between items-center mt-8">
+              <button
+                onClick={() => setCurrentQuestionIndex((i) => i - 1)}
+                disabled={currentQuestionIndex === 0}
+                className="flex items-center px-4 py-2 rounded-lg border disabled:opacity-50"
+              >
+                <ChevronLeft className="inline-block" /> Previous
+              </button>
+              {currentQuestionIndex < questions.length - 1 ? (
+                <button
+                  onClick={() => setCurrentQuestionIndex((i) => i + 1)}
+                  className="px-4 py-2 bg-siemens-primary text-white rounded-lg hover:bg-siemens-primary-dark"
+                >
+                  Next <ChevronRight className="inline-block" />
+                </button>
+              ) : (
+                <button
+                  onClick={() => handleSubmitTest(false)}
+                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold"
+                >
+                  Submit Test
+                </button>
+              )}
             </div>
           </div>
-
-          {/* Navigation */}
-          <div className="flex justify-between items-center mt-8">
-            <button
-              onClick={() =>
-                setCurrentQuestionIndex(Math.max(0, currentQuestionIndex - 1))
-              }
-              disabled={currentQuestionIndex === 0}
-              className="px-4 py-2 rounded-lg border disabled:opacity-50"
-            >
-              <ChevronLeft className="inline-block" /> Previous
-            </button>
-
-            {currentQuestionIndex === questions.length - 1 ? (
+        );
+      case "submitted":
+        return (
+          <div className="max-w-2xl w-full">
+            <div ref={resultsRef} className="bg-white p-8 rounded-xl shadow-lg">
+              <div className="text-center">
+                <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
+                <h1 className="text-3xl font-bold text-gray-800">
+                  Test Submitted!
+                </h1>
+                {finalResult.forced && (
+                  <p className="mt-2 text-lg text-red-600 font-semibold">
+                    This test was submitted automatically.
+                  </p>
+                )}
+                <p className="text-gray-600 mt-2">
+                  Thank you, {studentInfo.name}. Your results for Attempt #
+                  {attemptNumber} are below.
+                </p>
+              </div>
+              <div className="text-center my-6 bg-gray-50 p-4 rounded-lg">
+                <p className="text-lg text-gray-600">Your Score</p>
+                <p className="text-5xl font-bold text-siemens-primary">
+                  {finalResult.score}{" "}
+                  <span className="text-3xl text-gray-500">
+                    / {questions.length}
+                  </span>
+                </p>
+              </div>
+            </div>
+            <div className="text-center mt-8">
               <button
-                onClick={() => handleSubmitTest(false)}
-                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold"
+                onClick={handleDownloadPdf}
+                disabled={loading}
+                className="bg-siemens-primary text-white py-3 px-6 rounded-lg hover:bg-siemens-primary-dark"
               >
-                Submit Test
+                {loading ? "Generating PDF..." : "Download Results as PDF"}
               </button>
-            ) : (
-              <button
-                onClick={() =>
-                  setCurrentQuestionIndex(
-                    Math.min(questions.length - 1, currentQuestionIndex + 1)
-                  )
-                }
-                className="px-4 py-2 bg-siemens-primary text-white rounded-lg hover:bg-siemens-primary-dark"
-              >
-                Next <ChevronRight className="inline-block" />
-              </button>
-            )}
+            </div>
           </div>
-        </div>
-      </div>
-    );
-  }
+        );
+      default:
+        return (
+          <Loader2 className="h-12 w-12 animate-spin text-siemens-primary" />
+        );
+    }
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <p>{error || "Loading test..."}</p>
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      {renderContent()}
     </div>
   );
 };

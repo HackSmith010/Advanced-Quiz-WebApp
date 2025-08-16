@@ -153,7 +153,6 @@ const Overview = () => {
                   {stat.value}
                 </p>
               </div>
-              {/* MODIFIED: Using the full class names from the statCards array */}
               <div className={`p-3 rounded-full ${stat.bgColor}`}>
                 <stat.icon className={`h-6 w-6 ${stat.textColor}`} />
               </div>
