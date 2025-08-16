@@ -37,7 +37,7 @@ const Modal = ({ children, onClose, title, maxWidth = "2xl" }) => (
   </div>
 );
 
-// Confirmation Modal for Deletion
+// Confirmation Modal for Deletions
 const ConfirmationModal = ({
   isOpen,
   onClose,
@@ -201,13 +201,11 @@ const QuestionsManager = () => {
   const openEditModal = (question) => {
     setEditingQuestion(question);
     setFormData({
+      type: question.type,
+      original_text: question.original_text,
       question_template: question.question_template,
-      correct_answer_formula: question.correct_answer_formula,
-      distractor_formulas: Array.isArray(question.distractor_formulas)
-        ? question.distractor_formulas.join("\n")
-        : "",
-      category: question.category || "",
-      variables: question.variables,
+      category: question.category,
+      details: JSON.parse(JSON.stringify(question.details)),
     });
     setShowEditModal(true);
   };
@@ -216,16 +214,34 @@ const QuestionsManager = () => {
     e.preventDefault();
     setActionLoading(true);
     try {
-      const payload = {
-        ...formData,
-        variables:
-          typeof formData.variables === "string"
-            ? JSON.parse(formData.variables)
-            : formData.variables,
-        distractor_formulas: formData.distractor_formulas
+      let finalDetails = { ...formData.details };
+
+      if (
+        formData.type === "numerical" &&
+        typeof finalDetails.distractor_formulas === "string"
+      ) {
+        finalDetails.distractor_formulas = finalDetails.distractor_formulas
           .split("\n")
-          .filter((f) => f.trim() !== ""),
+          .filter((f) => f.trim() !== "");
+      }
+
+      if (
+        formData.type === "conceptual" &&
+        typeof finalDetails.distractors === "string"
+      ) {
+        finalDetails.distractors = finalDetails.distractors
+          .split("\n")
+          .filter((d) => d.trim() !== "");
+      }
+
+      const payload = {
+        type: formData.type,
+        original_text: formData.original_text,
+        question_template: formData.question_template,
+        category: formData.category,
+        details: finalDetails,
       };
+
       await axios.put(`/api/questions/${editingQuestion.id}`, payload);
       fetchQuestions();
       setShowEditModal(false);
@@ -407,12 +423,25 @@ const QuestionsManager = () => {
                 >
                   <div className="p-4">
                     <div className="flex justify-between items-start">
-                      <p className="text-sm text-gray-700 leading-relaxed pr-4 flex-1">
-                        <span className="font-bold text-siemens-primary">
-                          {index + 1}.{" "}
-                        </span>
-                        {q.question_template}
-                      </p>
+                      <div className="flex-1 min-w-0 pr-4">
+                        <p className="text-sm text-gray-800 leading-relaxed">
+                          <span className="font-bold text-siemens-primary">
+                            {index + 1}.{" "}
+                          </span>
+                          {q.question_template ? (
+                            <span className="font-mono">
+                              {q.question_template}
+                            </span>
+                          ) : (
+                            <span>{q.original_text}</span>
+                          )}
+                        </p>
+                        {q.question_template && (
+                          <p className="text-xs text-gray-500 mt-2 pl-6 border-l-2 ml-1 italic">
+                            Original: {q.original_text}
+                          </p>
+                        )}
+                      </div>
                       <div className="flex items-center space-x-1">
                         <button
                           onClick={() => openEditModal(q)}
@@ -436,9 +465,6 @@ const QuestionsManager = () => {
                         )}
                       </div>
                     </div>
-                    <p className="text-xs text-gray-400 mt-2 pl-6">
-                      Original: {q.original_text}
-                    </p>
                   </div>
                   <div className="bg-gray-50 px-4 py-3 border-t flex justify-end items-center space-x-3">
                     {selectedView.id === "pending_review" && (
@@ -518,7 +544,7 @@ const QuestionsManager = () => {
                 value={newSubjectName}
                 onChange={(e) => setNewSubjectName(e.target.value)}
                 className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-siemens-primary"
-                placeholder="e.g., Speed , Trignometry.."
+                placeholder="e.g., Physics, Mathematics"
                 required
               />
             </div>
@@ -542,85 +568,159 @@ const QuestionsManager = () => {
         </Modal>
       )}
 
+      {/* --- THIS IS THE MISSING EDIT MODAL --- */}
       {showEditModal && formData && (
         <Modal
           onClose={() => setShowEditModal(false)}
           title="Edit Question"
-          maxWidth = "max-w-xl"
+          maxWidth="lg"
         >
           <form onSubmit={handleUpdateQuestion} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-siemens-secondary mb-2">
-                Question Template
-              </label>
+              <label className="block text-sm font-medium">Original Text</label>
               <textarea
-                value={formData.question_template}
+                value={formData.original_text}
                 onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    question_template: e.target.value,
-                  })
+                  setFormData({ ...formData, original_text: e.target.value })
                 }
                 rows="3"
-                className="w-full px-3 py-2 border rounded-lg font-mono text-sm focus:ring-2 focus:ring-siemens-primary"
+                className="w-full mt-1 p-2 border rounded-lg text-sm"
               />
             </div>
+
+            {formData.type === "numerical" && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium">
+                    Question Template
+                  </label>
+                  <textarea
+                    value={formData.question_template}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        question_template: e.target.value,
+                      })
+                    }
+                    rows="3"
+                    className="w-full mt-1 p-2 border rounded-lg font-mono text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium">
+                    Variables (Read-only)
+                  </label>
+                  <textarea
+                    value={JSON.stringify(formData.details.variables, null, 2)}
+                    readOnly
+                    rows="3"
+                    className="w-full mt-1 p-2 border rounded-lg bg-gray-100 font-mono text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium">
+                    Correct Answer Formula
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.details.correct_answer_formula}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        details: {
+                          ...formData.details,
+                          correct_answer_formula: e.target.value,
+                        },
+                      })
+                    }
+                    className="w-full mt-1 p-2 border rounded-lg font-mono text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium">
+                    Distractor Formulas (one per line)
+                  </label>
+                  <textarea
+                    value={
+                      Array.isArray(formData.details.distractor_formulas)
+                        ? formData.details.distractor_formulas.join("\n")
+                        : ""
+                    }
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        details: {
+                          ...formData.details,
+                          distractor_formulas: e.target.value,
+                        },
+                      })
+                    }
+                    rows="3"
+                    className="w-full mt-1 p-2 border rounded-lg font-mono text-sm"
+                  />
+                </div>
+              </>
+            )}
+
+            {formData.type === "conceptual" && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium">
+                    Correct Answer
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.details.correct_answer}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        details: {
+                          ...formData.details,
+                          correct_answer: e.target.value,
+                        },
+                      })
+                    }
+                    className="w-full mt-1 p-2 border rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium">
+                    Distractors (incorrect options, one per line)
+                  </label>
+                  <textarea
+                    value={
+                      Array.isArray(formData.details.distractors)
+                        ? formData.details.distractors.join("\n")
+                        : ""
+                    }
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        details: {
+                          ...formData.details,
+                          distractors: e.target.value,
+                        },
+                      })
+                    }
+                    rows="3"
+                    className="w-full mt-1 p-2 border rounded-lg text-sm"
+                  />
+                </div>
+              </>
+            )}
+
             <div>
-              <label className="block text-sm font-medium text-siemens-secondary mb-2">
-                Variables (Read-only)
-              </label>
-              <textarea
-                value={JSON.stringify(formData.variables, null, 2)}
-                readOnly
-                rows="4"
-                className="w-full px-3 py-2 border rounded-lg bg-gray-100 font-mono text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-siemens-secondary mb-2">
-                Correct Answer Formula
-              </label>
-              <input
-                type="text"
-                value={formData.correct_answer_formula}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    correct_answer_formula: e.target.value,
-                  })
-                }
-                className="w-full px-3 py-2 border rounded-lg font-mono text-sm focus:ring-2 focus:ring-siemens-primary"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-siemens-secondary mb-2">
-                Distractor Formulas (one per line)
-              </label>
-              <textarea
-                value={formData.distractor_formulas}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    distractor_formulas: e.target.value,
-                  })
-                }
-                rows="3"
-                className="w-full px-3 py-2 border rounded-lg font-mono text-sm focus:ring-2 focus:ring-siemens-primary"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-siemens-secondary mb-2">
-                Category
-              </label>
+              <label className="block text-sm font-medium">Category</label>
               <input
                 type="text"
                 value={formData.category}
                 onChange={(e) =>
                   setFormData({ ...formData, category: e.target.value })
                 }
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-siemens-primary"
+                className="w-full mt-1 p-2 border rounded-lg text-sm"
               />
             </div>
+
             <div className="flex justify-end space-x-3 pt-4 border-t">
               <button
                 type="button"

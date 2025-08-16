@@ -1,113 +1,100 @@
-import { create, all } from 'mathjs';
+import { create, all } from "mathjs";
+import seedrandom from "seedrandom";
 
 const math = create(all);
 
-function generateQuestionForStudent(questionTemplate, rollNumber, questionIndex) {
-  const variables = questionTemplate.variables;
-  const distractorFormulas = questionTemplate.distractor_formulas;
-  
-  const seed = hashCode(rollNumber + questionIndex.toString());
-  const rng = new SeededRandom(seed);
-  
-  const generatedValues = {};
-  variables.forEach(variable => {
-    if (typeof variable.value !== 'number') return;
-    
-    const originalValue = variable.value;
-    const minValue = Math.max(1, Math.floor(originalValue * 0.5));
-    const maxValue = Math.ceil(originalValue * 1.5);
-    generatedValues[variable.name] = rng.nextInt(minValue, maxValue + 1);
-  });
-  
-  let generatedQuestion = questionTemplate.question_template;
-  Object.keys(generatedValues).forEach(varName => {
-    const regex = new RegExp(`{${varName}}`, 'g');
-    generatedQuestion = generatedQuestion.replace(regex, generatedValues[varName]);
-  });
-  
-  const correctAnswer = evaluateFormula(
-    questionTemplate.correct_answer_formula, 
-    generatedValues
-  );
+function shuffleArray(array, seed) {
+  const rng = seedrandom(seed);
+  let currentIndex = array.length;
+  let randomIndex;
 
-  if (correctAnswer === null) {
-    console.error(`Could not generate a valid answer for question: "${questionTemplate.original_text}". Skipping.`);
-    return null;
-  }
-  
-  let distractorAnswers = distractorFormulas
-    .map(formula => evaluateFormula(formula, generatedValues))
-    .filter(opt => opt !== null && opt !== correctAnswer); 
-
-  if (distractorAnswers.length < 3) {
-    const fallbackDistractors = [
-      correctAnswer + rng.nextInt(1, 10),
-      Math.abs(correctAnswer - rng.nextInt(1, 10)),
-      correctAnswer * 2,
-      Math.round(correctAnswer / 2)
+  while (currentIndex !== 0) {
+    randomIndex = Math.floor(rng() * currentIndex);
+    currentIndex--;
+    [array[currentIndex], array[randomIndex]] = [
+      array[randomIndex],
+      array[currentIndex],
     ];
-    for (const fallback of fallbackDistractors) {
-      if (distractorAnswers.length < 3 && !distractorAnswers.includes(fallback) && fallback !== correctAnswer) {
-        distractorAnswers.push(fallback);
-      }
-    }
   }
-  
-  const allOptions = [correctAnswer, ...distractorAnswers.slice(0, 3)];
-  const shuffledOptions = shuffleArray([...new Set(allOptions)], rng);
-  
-  return {
-    question: generatedQuestion,
-    values: generatedValues,
-    correctAnswer: correctAnswer?.toString(),
-    options: shuffledOptions.map(opt => opt.toString())
-  };
+  return array;
 }
 
-function hashCode(str) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
+function evaluateFormula(formula, scope) {
+  if (!formula || typeof formula !== "string" || formula.trim() === "null") {
+    return null;
   }
-  return Math.abs(hash);
-}
-
-class SeededRandom {
-  constructor(seed) { this.seed = seed; }
-  next() {
-    this.seed = (this.seed * 9301 + 49297) % 233280;
-    return this.seed / 233280;
-  }
-  nextInt(min, max) {
-    return Math.floor(this.next() * (max - min)) + min;
-  }
-}
-
-function evaluateFormula(formula, values) {
-  if (!formula || formula === 'null') return null;
   try {
-    const scope = { ...values };
     const result = math.evaluate(formula, scope);
-    if (typeof result === 'object' && result.entries) {
-      const finalResult = result.entries[result.entries.length - 1];
-      return typeof finalResult === 'number' ? Math.round(finalResult * 100) / 100 : finalResult;
+    if (typeof result === "number" && isFinite(result)) {
+      return Math.round(result * 100) / 100;
     }
-    return typeof result === 'number' ? Math.round(result * 100) / 100 : result;
+    return null;
   } catch (error) {
-    console.error(`Error evaluating formula: "${formula}"`, error.message);
+    console.error(
+      `Error evaluating formula: "${formula}" with scope:`,
+      scope,
+      error.message
+    );
     return null;
   }
 }
 
-function shuffleArray(array, rng) {
-  const shuffled = [...array];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(rng.next() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  return shuffled;
-}
+export function generateQuestionForStudent(question, rollNumber, index) {
+  const seed = `${rollNumber}-${question.id}-${index}`;
+  const details = question.details;
 
-export { generateQuestionForStudent };
+  if (question.type === "numerical") {
+    const scope = {};
+    const rng = seedrandom(seed);
+
+    for (const key in details.variables) {
+      const originalValue = details.variables[key];
+      const randomFactor = 0.8 + rng() * 0.4;
+      scope[key] = Math.round(originalValue * randomFactor);
+    }
+
+    const correctAnswer = evaluateFormula(
+      details.correct_answer_formula,
+      scope
+    );
+    if (correctAnswer === null) {
+      console.error(
+        `Could not generate a valid answer for numerical question ID: ${question.id}. Skipping.`
+      );
+      return null;
+    }
+
+    const distractorAnswers = details.distractor_formulas
+      .map((formula) => evaluateFormula(formula, scope))
+      .filter((opt) => opt !== null && opt !== correctAnswer);
+
+    const finalOptions = [...new Set([correctAnswer, ...distractorAnswers])];
+
+    let questionText = question.question_template;
+    for (const key in scope) {
+      questionText = questionText.replace(
+        new RegExp(`{${key}}`, "g"),
+        scope[key]
+      );
+    }
+
+    return {
+      question: questionText,
+      options: shuffleArray(finalOptions.map(String), seed),
+      correctAnswer: correctAnswer.toString(),
+    };
+  } else if (question.type === "conceptual") {
+    const options = [...details.distractors, details.correct_answer];
+
+    return {
+      question: question.original_text,
+      options: shuffleArray(options, seed),
+      correctAnswer: details.correct_answer,
+    };
+  }
+
+  console.warn(
+    `Unknown question type "${question.type}" for question ID: ${question.id}`
+  );
+  return null;
+}

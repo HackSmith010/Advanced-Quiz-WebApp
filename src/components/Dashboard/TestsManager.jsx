@@ -46,10 +46,12 @@ const Modal = ({ children, onClose, title, maxWidth = "4xl" }) => (
 const SubjectAccordion = ({
   subjectName,
   questions,
-  selectedIds,
-  onToggle,
+  selectedQuestions,
+  onToggleSelect,
+  onToggleCompulsory,
 }) => {
   const [isOpen, setIsOpen] = useState(true);
+
   return (
     <div className="border rounded-lg">
       <button
@@ -59,9 +61,7 @@ const SubjectAccordion = ({
       >
         <div className="flex items-center">
           <BookCopy size={16} className="mr-2 text-siemens-primary" />
-          <span className="font-medium text-siemens-secondary">
-            {subjectName}
-          </span>
+          <span className="font-medium">{subjectName}</span>
           <span className="ml-2 text-xs text-gray-500">
             ({questions.length} available)
           </span>
@@ -70,20 +70,45 @@ const SubjectAccordion = ({
       </button>
       {isOpen && (
         <div className="p-3 space-y-2 max-h-48 overflow-y-auto">
-          {questions.map((q) => (
-            <label
-              key={q.id}
-              className="flex items-start space-x-3 cursor-pointer p-2 hover:bg-siemens-primary-50 rounded"
-            >
-              <input
-                type="checkbox"
-                checked={selectedIds.includes(q.id)}
-                onChange={() => onToggle(q.id)}
-                className="mt-1 h-4 w-4 text-siemens-primary border-gray-300 rounded focus:ring-siemens-primary"
-              />
-              <p className="text-sm text-gray-600">{q.question_template}</p>
-            </label>
-          ))}
+          {questions.map((q) => {
+            const isSelected = selectedQuestions.some((sq) => sq.id === q.id);
+            const isCompulsory =
+              isSelected &&
+              selectedQuestions.find((sq) => sq.id === q.id).isCompulsory;
+            return (
+              <div
+                key={q.id}
+                className={`flex items-center justify-between p-2 rounded ${
+                  isSelected ? "bg-siemens-primary-50" : "hover:bg-gray-50"
+                }`}
+              >
+                <label className="flex items-start space-x-3 cursor-pointer flex-1">
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => onToggleSelect(q.id)}
+                    className="mt-1 h-4 w-4 text-siemens-primary rounded focus:ring-siemens-primary"
+                  />
+                  <p className="text-sm text-gray-600">
+                    {q.type === "numerical"
+                      ? q.question_template
+                      : q.original_text}
+                  </p>
+                </label>
+                {isSelected && (
+                  <label className="flex items-center space-x-2 cursor-pointer text-xs text-orange-600 font-semibold ml-4 flex-shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={isCompulsory}
+                      onChange={() => onToggleCompulsory(q.id)}
+                      className="h-4 w-4 text-orange-500 border-gray-300 rounded focus:ring-orange-500"
+                    />
+                    <span>Compulsory</span>
+                  </label>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -109,13 +134,17 @@ const TestsManager = () => {
     marks_per_question: 1,
     number_of_questions: 10,
     max_attempts: 1,
-    question_ids: [],
+    selected_questions: [],
   };
 
   const [formData, setFormData] = useState(initialFormData);
 
+  const compulsoryCount = formData.selected_questions.filter(
+    (q) => q.isCompulsory
+  ).length;
   const isFormValid =
-    formData.question_ids.length >= formData.number_of_questions &&
+    formData.selected_questions.length >= formData.number_of_questions &&
+    formData.number_of_questions > compulsoryCount &&
     formData.number_of_questions > 0;
 
   const groupedResults = useMemo(() => {
@@ -147,33 +176,84 @@ const TestsManager = () => {
 
   const fetchApprovedQuestions = async () => {
     try {
-      const response = await axios.get("/api/questions/approved");
-      setQuestionsBySubject(response.data);
+      const response = await axios.get("/api/questions?status=approved");
+
+      const grouped = response.data.reduce((acc, q) => {
+        const subjectName = q.subject_name || "Uncategorized";
+        (acc[subjectName] = acc[subjectName] || []).push(q);
+        return acc;
+      }, {});
+
+      setQuestionsBySubject(grouped);
     } catch (error) {
       console.error("Error fetching approved questions:", error);
     }
   };
 
-  const handleQuestionToggle = (questionId) => {
+  const handleQuestionSelectToggle = (questionId) => {
+    setFormData((prev) => {
+      const isSelected = prev.selected_questions.some(
+        (q) => q.id === questionId
+      );
+      if (isSelected) {
+        return {
+          ...prev,
+          selected_questions: prev.selected_questions.filter(
+            (q) => q.id !== questionId
+          ),
+        };
+      } else {
+        return {
+          ...prev,
+          selected_questions: [
+            ...prev.selected_questions,
+            { id: questionId, isCompulsory: false },
+          ],
+        };
+      }
+    });
+  };
+
+  const handleCompulsoryToggle = (questionId) => {
     setFormData((prev) => ({
       ...prev,
-      question_ids: prev.question_ids.includes(questionId)
-        ? prev.question_ids.filter((id) => id !== questionId)
-        : [...prev.question_ids, questionId],
+      selected_questions: prev.selected_questions.map((q) =>
+        q.id === questionId ? { ...q, isCompulsory: !q.isCompulsory } : q
+      ),
     }));
   };
 
   const handleCreateTest = async (e) => {
     e.preventDefault();
     if (!isFormValid) {
-      setError("Form is invalid. Please check the number of questions.");
+      setError(
+        "Validation Error: Please ensure 'Questions in Test' is positive, less than total selected, and greater than compulsory questions."
+      );
       return;
     }
     setActionLoading(true);
     setError("");
     setMessage("");
     try {
-      await axios.post("/api/tests", formData);
+      const compulsory_question_ids = formData.selected_questions
+        .filter((q) => q.isCompulsory)
+        .map((q) => q.id);
+      const random_question_ids = formData.selected_questions
+        .filter((q) => !q.isCompulsory)
+        .map((q) => q.id);
+
+      const payload = {
+        title: formData.title,
+        description: formData.description,
+        duration_minutes: formData.duration_minutes,
+        marks_per_question: formData.marks_per_question,
+        number_of_questions: formData.number_of_questions,
+        max_attempts: formData.max_attempts,
+        compulsory_question_ids,
+        random_question_ids,
+      };
+
+      await axios.post("/api/tests", payload);
       setMessage("Test created successfully!");
       fetchTests();
       setTimeout(() => {
@@ -579,7 +659,7 @@ const TestsManager = () => {
                   type="number"
                   required
                   min="1"
-                  max={formData.question_ids.length}
+                  max={formData.selected_questions.length}
                   value={formData.number_of_questions}
                   onChange={(e) =>
                     setFormData({
@@ -589,11 +669,6 @@ const TestsManager = () => {
                   }
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-siemens-primary"
                 />
-                {!isFormValid && formData.question_ids.length > 0 && (
-                  <p className="text-xs text-red-600 mt-1">
-                    Must not exceed selected questions.
-                  </p>
-                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -616,8 +691,8 @@ const TestsManager = () => {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Select Questions from Bank ({formData.question_ids.length}{" "}
-                selected)
+                Select Questions ({formData.selected_questions.length} selected,{" "}
+                {compulsoryCount} compulsory)
               </label>
               <div className="space-y-3 p-3 border rounded-lg bg-gray-50 max-h-64 overflow-y-auto">
                 {Object.keys(questionsBySubject).length > 0 ? (
@@ -626,8 +701,9 @@ const TestsManager = () => {
                       key={subjectName}
                       subjectName={subjectName}
                       questions={questionsBySubject[subjectName]}
-                      selectedIds={formData.question_ids}
-                      onToggle={handleQuestionToggle}
+                      selectedQuestions={formData.selected_questions}
+                      onToggleSelect={handleQuestionSelectToggle}
+                      onToggleCompulsory={handleCompulsoryToggle}
                     />
                   ))
                 ) : (
@@ -636,6 +712,12 @@ const TestsManager = () => {
                   </p>
                 )}
               </div>
+              {!isFormValid && formData.selected_questions.length > 0 && (
+                <p className="text-xs text-red-600 mt-1">
+                  Check question counts. Total questions must be more than
+                  compulsory, and less than or equal to selected.
+                </p>
+              )}
             </div>
             <div className="flex justify-end space-x-3 pt-4 border-t">
               <button

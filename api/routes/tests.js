@@ -41,58 +41,53 @@ router.post("/", authenticateToken, async (req, res) => {
       description,
       duration_minutes,
       marks_per_question,
-      question_ids,
-      number_of_questions, 
+      number_of_questions,
       max_attempts,
+      compulsory_question_ids,
+      random_question_ids,
     } = req.body;
-    const testLink = uuidv4();
+    
+    // --- MODIFIED: Corrected Validation Logic ---
+    const totalSelected = compulsory_question_ids.length + random_question_ids.length;
+    const neededRandom = number_of_questions - compulsory_question_ids.length;
 
-    const uniqueQuestionIds = [...new Set(question_ids)];
-
-    if (!number_of_questions || number_of_questions <= 0) {
-      return res.status(400).json({ error: "Number of questions must be a positive integer." });
-    }
-    if (uniqueQuestionIds.length < number_of_questions) {
-        return res.status(400).json({ error: "Cannot create test. The number of selected questions is less than the number of questions required for the test." });
+    if (number_of_questions <= compulsory_question_ids.length) {
+        return res.status(400).json({ error: "The total number of questions must be greater than the number of compulsory questions." });
     }
 
+    if (random_question_ids.length < neededRandom) {
+        return res.status(400).json({ error: `You need to select at least ${neededRandom} more non-compulsory questions to meet the test total of ${number_of_questions}.` });
+    }
 
     await client.query("BEGIN");
 
-     const insertTestQuery = `
+    const insertTestQuery = `
       INSERT INTO tests (title, description, teacher_id, duration_minutes, 
                         marks_per_question, test_link, status, number_of_questions, max_attempts)
       VALUES ($1, $2, $3, $4, $5, $6, 'draft', $7, $8)
       RETURNING id
     `;
     const testResult = await client.query(insertTestQuery, [
-      title,
-      description || null,
-      req.user.userId,
-      duration_minutes || 60,
-      marks_per_question || 1,
-      testLink,
-      number_of_questions,
-      max_attempts || 1, 
+      title, description, req.user.userId, duration_minutes,
+      marks_per_question, uuidv4(), number_of_questions, max_attempts,
     ]);
     const testId = testResult.rows[0].id;
 
     const insertTestQuestionQuery = `
-      INSERT INTO test_questions (test_id, question_template_id)
-      VALUES ($1, $2)
+      INSERT INTO test_questions (test_id, question_template_id, is_compulsory)
+      VALUES ($1, $2, $3)
     `;
-    for (const questionId of uniqueQuestionIds) {
-      await client.query(insertTestQuestionQuery, [testId, questionId]);
+    
+    for (const questionId of compulsory_question_ids) {
+      await client.query(insertTestQuestionQuery, [testId, questionId, true]);
+    }
+    for (const questionId of random_question_ids) {
+      await client.query(insertTestQuestionQuery, [testId, questionId, false]);
     }
 
     await client.query("COMMIT");
+    res.status(201).json({ message: "Test created successfully" });
 
-    res.status(201).json({
-      id: testId,
-      title,
-      test_link: testLink,
-      message: "Test created successfully",
-    });
   } catch (error) {
     await client.query("ROLLBACK");
     console.error("Error creating test:", error);

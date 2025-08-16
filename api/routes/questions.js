@@ -1,155 +1,139 @@
-import express from 'express';
-import { db } from '../database/schema.js';
-import { authenticateToken } from '../middleware/auth.js';
+import express from "express";
+import { db } from "../database/schema.js";
+import { authenticateToken } from "../middleware/auth.js";
 
 const router = express.Router();
 
-router.get('/', authenticateToken, async (req, res) => {
+router.get("/", authenticateToken, async (req, res) => {
   try {
-    const { subjectId, status } = req.query;
+    const { status, subjectId } = req.query;
+    const teacherId = req.user.userId;
+
     let query = `
-      SELECT q.*, s.name as subject_name 
-      FROM question_templates q
-      LEFT JOIN subjects s ON q.subject_id = s.id
-      WHERE q.teacher_id = $1
+      SELECT qt.*, s.name as subject_name 
+      FROM question_templates qt
+      LEFT JOIN subjects s ON qt.subject_id = s.id
+      WHERE qt.teacher_id = $1
     `;
-    const params = [req.user.userId];
-    let paramIndex = 2;
+    const params = [teacherId];
 
     if (subjectId) {
-      query += ` AND q.subject_id = $${paramIndex++}`;
+      query += ` AND qt.subject_id = $2 AND qt.status = 'approved'`;
       params.push(subjectId);
-    }
-    if (status) {
-      query += ` AND q.status = $${paramIndex++}`;
+    } else if (status) {
+      query += ` AND qt.status = $2`;
       params.push(status);
     }
-    
-    query += ` ORDER BY q.created_at DESC`;
+
+    query += ` ORDER BY qt.created_at DESC`;
+
     const result = await db.query(query, params);
     res.json(result.rows);
   } catch (error) {
-    console.error('Error fetching questions:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-router.get('/approved', authenticateToken, async (req, res) => {
-  try {
-    const query = `
-      SELECT q.*, s.name as subject_name
-      FROM question_templates q
-      JOIN subjects s ON q.subject_id = s.id
-      WHERE q.teacher_id = $1 AND q.status = 'approved'
-      ORDER BY s.name, q.created_at
-    `;
-    const result = await db.query(query, [req.user.userId]);
-
-    const groupedBySubject = result.rows.reduce((acc, question) => {
-      const subject = question.subject_name;
-      if (!acc[subject]) {
-        acc[subject] = [];
-      }
-      acc[subject].push(question);
-      return acc;
-    }, {});
-
-    res.json(groupedBySubject);
-  } catch (error) {
-    console.error('Error fetching approved questions by subject:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-router.put("/:id/status", authenticateToken, async (req, res) => {
-  try {
-    const { status, subjectId } = req.body;
-    const questionId = req.params.id;
-
-    let updateClauses = [];
-    const params = [];
-    if (status) {
-      updateClauses.push(`status = $${params.push(status)}`);
-    }
-    if (subjectId) {
-      updateClauses.push(`subject_id = $${params.push(subjectId)}`);
-    }
-
-    if (updateClauses.length === 0) {
-      return res.status(400).json({ error: "No update information provided." });
-    }
-
-    const query = `
-      UPDATE question_templates 
-      SET ${updateClauses.join(", ")} 
-      WHERE id = $${params.push(questionId)} AND teacher_id = $${params.push(
-      req.user.userId
-    )}
-    `;
-
-    const result = await db.query(query, params);
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: "Question not found" });
-    }
-    res.json({ message: "Question updated successfully" });
-  } catch (error) {
-    console.error("Error updating question status:", error);
+    console.error("Error fetching questions:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.post("/", authenticateToken, async (req, res) => {
+  const { type, original_text, question_template, category, details } =
+    req.body;
   try {
-    const result = await db.query(
-      'DELETE FROM question_templates WHERE id = $1 AND teacher_id = $2',
-      [req.params.id, req.user.userId]
-    );
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Question not found or permission denied' });
-    }
-
-    res.json({ message: 'Question deleted permanently' });
+    const query = `
+            INSERT INTO question_templates (type, original_text, question_template, category, details, teacher_id, status)
+            VALUES ($1, $2, $3, $4, $5, $6, 'pending_review')
+            RETURNING *
+        `;
+    const result = await db.query(query, [
+      type,
+      original_text,
+      question_template,
+      category,
+      details,
+      req.user.userId,
+    ]);
+    res.status(201).json(result.rows[0]);
   } catch (error) {
-    console.error('Error deleting question:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Error creating question:", error);
+    res.status(500).json({ error: "Failed to create question" });
   }
 });
 
-router.put("/:id", authenticateToken, async (req, res) => {
+// Update a question's status (approve, reject, restore)
+router.put("/:id/status", authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { status, subjectId } = req.body;
   try {
-    const {
-      question_template,
-      variables,
-      correct_answer_formula,
-      distractor_formulas,
-      category, 
-    } = req.body;
-    const questionId = req.params.id;
+    let query;
+    let params;
 
+    if (status === "approved" && subjectId) {
+      query = `UPDATE question_templates SET status = $1, subject_id = $2 WHERE id = $3 AND teacher_id = $4`;
+      params = [status, subjectId, id, req.user.userId];
+    } else if (status === "rejected") {
+      query = `UPDATE question_templates SET status = $1, subject_id = NULL WHERE id = $2 AND teacher_id = $3`;
+      params = [status, id, req.user.userId];
+    } else if (status === "pending_review") {
+      query = `UPDATE question_templates SET status = $1 WHERE id = $2 AND teacher_id = $3`;
+      params = [status, id, req.user.userId];
+    } else {
+      return res.status(400).json({ error: "Invalid status update request" });
+    }
+
+    await db.query(query, params);
+    res.json({ message: "Question status updated successfully" });
+  } catch (error) {
+    console.error("Error updating question status:", error);
+    res.status(500).json({ error: "Failed to update question status" });
+  }
+});
+
+// Update a question's content
+router.put("/:id", authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { original_text, question_template, category, details } = req.body;
+  try {
     const query = `
             UPDATE question_templates 
-            SET question_template = $1, variables = $2, correct_answer_formula = $3, 
-                distractor_formulas = $4, category = $5
-            WHERE id = $6 AND teacher_id = $7
+            SET original_text = $1, question_template = $2, category = $3, details = $4
+            WHERE id = $5 AND teacher_id = $6
+            RETURNING *
         `;
-
     const result = await db.query(query, [
+      original_text,
       question_template,
-      JSON.stringify(variables),
-      correct_answer_formula,
-      JSON.stringify(distractor_formulas),
       category,
-      questionId,
+      details,
+      id,
       req.user.userId,
     ]);
-
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: "Question not found" });
+      return res
+        .status(404)
+        .json({ error: "Question not found or permission denied" });
     }
-    res.json({ message: "Question template updated successfully" });
+    res.json(result.rows[0]);
   } catch (error) {
     console.error("Error updating question:", error);
+    res.status(500).json({ error: "Failed to update question" });
+  }
+});
+
+// Delete a question permanently
+router.delete("/:id", authenticateToken, async (req, res) => {
+  try {
+    const result = await db.query(
+      "DELETE FROM question_templates WHERE id = $1 AND teacher_id = $2",
+      [req.params.id, req.user.userId]
+    );
+    if (result.rowCount === 0) {
+      return res
+        .status(404)
+        .json({ error: "Question not found or permission denied" });
+    }
+    res.status(204).send();
+  } catch (error) {
+    console.error("Error deleting question:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

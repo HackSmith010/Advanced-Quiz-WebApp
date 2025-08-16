@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import axios from "axios";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
@@ -13,7 +13,38 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  X,
 } from "lucide-react";
+
+// Warning Modal for Anti-Cheating
+const WarningModal = ({ isOpen, onConfirm }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl text-center">
+        <div className="flex justify-center mb-4">
+          <div className="p-3 bg-yellow-100 rounded-full">
+            <AlertTriangle className="h-8 w-8 text-yellow-600" />
+          </div>
+        </div>
+        <h3 className="text-xl font-semibold text-gray-900 mb-2">
+          Warning: Tab Change Detected
+        </h3>
+        <p className="text-gray-600 mb-6">
+          This is your first and only warning. If you switch tabs again, your
+          test will be submitted automatically.
+        </p>
+        <button
+          onClick={onConfirm}
+          type="button"
+          className="w-full bg-siemens-primary text-white py-2.5 rounded-lg hover:bg-siemens-primary-dark transition-colors"
+        >
+          I Understand
+        </button>
+      </div>
+    </div>
+  );
+};
 
 // Sub-component for the pre-quiz "Lobby" view
 const StudentLobby = ({
@@ -41,6 +72,25 @@ const StudentLobby = ({
           </div>
         )}
 
+        <div className="bg-gray-50 rounded-lg p-4 mb-6 border text-center">
+          <h3 className="font-semibold text-gray-800 mb-2">Test Details</h3>
+          <div className="text-sm text-gray-600 grid grid-cols-2 gap-2">
+            <p>
+              <strong>Total Questions:</strong> {test.number_of_questions}
+            </p>
+            <p>
+              <strong>Total Marks:</strong>{" "}
+              {test.number_of_questions * test.marks_per_question}
+            </p>
+            <p>
+              <strong>Duration:</strong> {test.duration_minutes} minutes
+            </p>
+            <p>
+              <strong>Marks per Question:</strong> {test.marks_per_question}
+            </p>
+          </div>
+        </div>
+
         <div className="bg-gray-50 rounded-lg p-4 mb-6 border">
           <h3 className="font-semibold text-gray-800 mb-2">
             Your Past Attempts
@@ -60,7 +110,9 @@ const StudentLobby = ({
                     <td className="py-2 px-3 font-medium">
                       #{att.attempt_number}
                     </td>
-                    <td className="py-2 px-3">{att.total_score}</td>
+                    <td className="py-2 px-3">
+                      {att.total_score} / {test.number_of_questions}
+                    </td>
                     <td className="py-2 px-3">
                       {new Date(att.end_time).toLocaleDateString()}
                     </td>
@@ -86,8 +138,7 @@ const StudentLobby = ({
             ) : (
               <>
                 <Play className="h-5 w-5 mr-2" />
-                {attempts.length > 0 ? "Retake Test" : "Start Test"} (
-                {attempts.length + 1}/{test.max_attempts})
+                {attempts.length > 0 ? "Retake Test" : "Start Test"}
               </>
             )}
           </button>
@@ -104,7 +155,7 @@ const StudentLobby = ({
 // Main Student Quiz Component
 const StudentQuiz = () => {
   const { testLink } = useParams();
-  const [view, setView] = useState("login"); // 'login', 'lobby', 'quiz', 'submitted'
+  const [view, setView] = useState("login");
   const [testInfo, setTestInfo] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -114,22 +165,42 @@ const StudentQuiz = () => {
   const [pastAttempts, setPastAttempts] = useState([]);
   const [attemptNumber, setAttemptNumber] = useState(1);
   const [finalResult, setFinalResult] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [tabChangeCount, setTabChangeCount] = useState(0);
   const [showWarning, setShowWarning] = useState(false);
+  const [showSubmitWarning, setShowSubmitWarning] = useState(false);
   const resultsRef = useRef();
+
+  useEffect(() => {
+    const fetchBasicTestInfo = async () => {
+      try {
+        const res = await axios.get(`/api/quiz/test/${testLink}`);
+        setTestInfo(res.data.test);
+      } catch (err) {
+        setError("Invalid or inactive test link.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchBasicTestInfo();
+  }, [testLink]);
 
   const handleSubmitTest = useCallback(
     async (isForced = false) => {
-      if (view !== "quiz" || finalResult) return; // Prevent multiple submissions
+      if (view !== "quiz" || finalResult) return;
+
+      if (!isForced && Object.keys(selectedAnswers).length < questions.length) {
+        setShowSubmitWarning(true);
+        setTimeout(() => setShowSubmitWarning(false), 3000);
+        return;
+      }
 
       if (
         !isForced &&
         !window.confirm("Are you sure you want to submit your test?")
-      ) {
+      )
         return;
-      }
 
       setLoading(true);
       try {
@@ -144,32 +215,35 @@ const StudentQuiz = () => {
         );
         setFinalResult({
           score: response.data.score,
-          attemptId: response.data.attemptId,
+          questions: response.data.questions,
           forced: isForced,
         });
         setView("submitted");
       } catch (err) {
-        setError(
-          "Failed to submit test. Please check your connection and try again."
-        );
+        setError("Failed to submit test. Please check your connection.");
         setView("lobby");
       } finally {
         setLoading(false);
       }
     },
-    [view, finalResult, testLink, studentInfo, selectedAnswers, attemptNumber]
+    [
+      view,
+      finalResult,
+      testLink,
+      studentInfo,
+      selectedAnswers,
+      attemptNumber,
+      questions.length,
+    ]
   );
 
-  // Enhanced Anti-Cheating and Timer Effects
   useEffect(() => {
     if (view !== "quiz") return;
-
     const preventDefault = (e) => e.preventDefault();
     const eventsToDisable = ["contextmenu", "copy", "paste"];
     eventsToDisable.forEach((event) =>
       document.addEventListener(event, preventDefault)
     );
-
     const handleVisibilityChange = () => {
       if (document.hidden) {
         const newCount = tabChangeCount + 1;
@@ -179,7 +253,6 @@ const StudentQuiz = () => {
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
-
     return () => {
       eventsToDisable.forEach((event) =>
         document.removeEventListener(event, preventDefault)
@@ -189,9 +262,7 @@ const StudentQuiz = () => {
   }, [view, tabChangeCount, handleSubmitTest]);
 
   useEffect(() => {
-    if (timeRemaining === 0 && view === "quiz") {
-      handleSubmitTest(true);
-    }
+    if (timeRemaining === 0 && view === "quiz") handleSubmitTest(true);
     if (timeRemaining > 0 && view === "quiz") {
       const timer = setTimeout(() => setTimeRemaining((t) => t - 1), 1000);
       return () => clearTimeout(timer);
@@ -232,7 +303,7 @@ const StudentQuiz = () => {
       setAttemptNumber(response.data.attempt_number);
       setCurrentQuestionIndex(0);
       setSelectedAnswers({});
-      setTabChangeCount(0); // Reset for new attempt
+      setTabChangeCount(0);
       setView("quiz");
     } catch (err) {
       setError(err.response?.data?.error || "Could not start a new attempt.");
@@ -251,14 +322,37 @@ const StudentQuiz = () => {
     if (!resultsElement) return;
     setLoading(true);
     try {
-      const canvas = await html2canvas(resultsElement, { scale: 2 });
+      const canvas = await html2canvas(resultsElement, {
+        scale: 2,
+        ignoreElements: (element) => element.classList.contains('pdf-ignore'),
+      });
       const imgData = canvas.toDataURL("image/png");
+
       const pdf = new jsPDF("p", "mm", "a4");
+      
+      pdf.setFontSize(20);
+      pdf.text(testInfo.title, 105, 20, { align: "center" });
+
+      pdf.setFontSize(12);
+      pdf.text(`Student: ${studentInfo.name}`, 15, 35);
+      pdf.text(`Roll Number: ${studentInfo.rollNumber}`, 15, 42);
+
+      pdf.text(`Total Questions: ${questions.length}`, 195, 35, { align: "right" });
+      pdf.text(`Attempt No: ${attemptNumber}`, 195, 42, { align: "right" });
+      
+      pdf.setLineWidth(0.5);
+      pdf.line(15, 50, 195, 50);
+      
       const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+      const canvasWidth = canvas.width;
+      const canvasHeight = canvas.height;
+      const ratio = canvasWidth / pdfWidth;
+      const imgHeight = canvasHeight / ratio;
+      
+      pdf.addImage(imgData, "PNG", 0, 55, pdfWidth, imgHeight);
+
       pdf.save(
-        `Quiz_Results_${studentInfo.rollNumber}_Attempt_${attemptNumber}.pdf`
+        `${testInfo.title.replace(/ /g, "_")}_${studentInfo.rollNumber}_Attempt_${attemptNumber}.pdf`
       );
     } catch (error) {
       console.error("PDF Generation Error:", error);
@@ -267,6 +361,7 @@ const StudentQuiz = () => {
       setLoading(false);
     }
   };
+
 
   const formatTime = (seconds) => {
     const minutes = Math.floor(seconds / 60);
@@ -277,17 +372,53 @@ const StudentQuiz = () => {
   const renderContent = () => {
     switch (view) {
       case "login":
+        if (loading) {
+          return (
+            <Loader2 className="h-12 w-12 animate-spin text-siemens-primary" />
+          );
+        }
+        if (error && !testInfo) {
+          return (
+            <div className="bg-red-100 text-red-700 p-4 rounded-lg">
+              {error}
+            </div>
+          );
+        }
         return (
           <div className="max-w-md w-full">
             <div className="bg-white rounded-xl shadow-lg p-8 border">
-              <h1 className="text-2xl font-bold text-center mb-6">
-                Enter Test
-              </h1>
-              {error && (
-                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4">
+              {testInfo ? (
+                <>
+                  <div className="text-center mb-4">
+                    <h1 className="text-2xl font-bold text-siemens-secondary">
+                      {testInfo.title}
+                    </h1>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-4 mb-6 border text-center text-sm text-gray-600">
+                    <p>
+                      <strong>Duration:</strong> {testInfo.duration_minutes} min
+                      |<strong> Questions:</strong>{" "}
+                      {testInfo.number_of_questions} |
+                      <strong> Total Marks:</strong>{" "}
+                      {testInfo.number_of_questions *
+                        testInfo.marks_per_question}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center mb-4">
+                  <h1 className="text-2xl font-bold text-siemens-secondary">
+                    Loading Test...
+                  </h1>
+                </div>
+              )}
+
+              {error && !pastAttempts.length && (
+                <div className="bg-red-100 text-red-700 px-4 py-3 rounded-lg mb-4">
                   {error}
                 </div>
               )}
+
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">
@@ -328,7 +459,7 @@ const StudentQuiz = () => {
                 </div>
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || !testInfo}
                   className="w-full bg-siemens-primary text-white py-3 rounded-lg font-semibold flex items-center justify-center disabled:opacity-50"
                 >
                   {loading ? (
@@ -360,6 +491,10 @@ const StudentQuiz = () => {
           );
         return (
           <div className="max-w-4xl w-full">
+            <WarningModal
+              isOpen={showWarning}
+              onConfirm={() => setShowWarning(false)}
+            />
             <div className="bg-white shadow-sm sticky top-0 z-10 p-4 rounded-t-xl border-b">
               <div className="flex justify-between items-center">
                 <div>
@@ -434,35 +569,45 @@ const StudentQuiz = () => {
               ) : (
                 <button
                   onClick={() => handleSubmitTest(false)}
-                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold"
+                  disabled={
+                    Object.keys(selectedAnswers).length < questions.length
+                  }
+                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Submit Test
                 </button>
               )}
             </div>
+            {showSubmitWarning && (
+              <p className="text-center text-red-600 mt-4">
+                Please answer all questions before submitting.
+              </p>
+            )}
           </div>
         );
       case "submitted":
         return (
-          <div className="max-w-2xl w-full">
+          <div className="max-w-3xl w-full">
+            {/* The ref is now only on the part of the screen we want to capture */}
             <div ref={resultsRef} className="bg-white p-8 rounded-xl shadow-lg">
-              <div className="text-center">
+              <div className="text-center border-b pb-6 mb-6">
                 <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
                 <h1 className="text-3xl font-bold text-gray-800">
                   Test Submitted!
                 </h1>
+                <p className="text-gray-500 mt-2">
+                  Submitted on: {new Date().toLocaleString()}
+                </p>
                 {finalResult.forced && (
                   <p className="mt-2 text-lg text-red-600 font-semibold">
                     This test was submitted automatically.
                   </p>
                 )}
-                <p className="text-gray-600 mt-2">
-                  Thank you, {studentInfo.name}. Your results for Attempt #
-                  {attemptNumber} are below.
-                </p>
               </div>
               <div className="text-center my-6 bg-gray-50 p-4 rounded-lg">
-                <p className="text-lg text-gray-600">Your Score</p>
+                <p className="text-lg text-gray-600">
+                  Your Score for Attempt #{attemptNumber}
+                </p>
                 <p className="text-5xl font-bold text-siemens-primary">
                   {finalResult.score}{" "}
                   <span className="text-3xl text-gray-500">
@@ -470,8 +615,33 @@ const StudentQuiz = () => {
                   </span>
                 </p>
               </div>
+              <div className="space-y-4">
+                <h2 className="text-xl font-semibold">Question Review</h2>
+                {finalResult.questions.map((q, index) => (
+                  <div key={index} className={`p-4 border rounded-lg ${ q.isCorrect ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50" }`}>
+                    <p className="font-semibold">
+                      {index + 1}. {q.questionText}
+                    </p>
+                    <p className={`mt-2 text-sm ${ q.isCorrect ? "text-green-800" : "text-red-800" }`}>
+                      <strong>Your Answer:</strong>{" "} {q.studentAnswer || "Not Answered"}
+                    </p>
+                    {!q.isCorrect && (
+                      <p className="mt-1 text-sm text-blue-800">
+                        <strong>Correct Answer:</strong> {q.correctAnswer}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="text-center mt-8">
+            {/* These buttons are now outside the ref, so they won't appear in the PDF */}
+            <div className="text-center mt-8 space-x-4 pdf-ignore">
+              <button
+                onClick={() => { setView("lobby"); setError(""); }}
+                className="bg-gray-200 text-gray-800 py-3 px-6 rounded-lg hover:bg-gray-300"
+              >
+                Back to Lobby
+              </button>
               <button
                 onClick={handleDownloadPdf}
                 disabled={loading}

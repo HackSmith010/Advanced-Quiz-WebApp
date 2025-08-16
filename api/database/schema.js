@@ -45,7 +45,7 @@ const createTables = async () => {
         password TEXT NOT NULL,
         name TEXT NOT NULL,
         role TEXT DEFAULT 'teacher',
-        status TEXT DEFAULT 'pending', -- pending | approved
+        status TEXT DEFAULT 'pending',
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -58,6 +58,7 @@ const createTables = async () => {
         email TEXT,
         teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ,
         UNIQUE(roll_number, teacher_id)
       )
     `);
@@ -93,13 +94,12 @@ const createTables = async () => {
     await client.query(`
       CREATE TABLE IF NOT EXISTS question_templates (
         id SERIAL PRIMARY KEY,
+        type TEXT NOT NULL, -- 'numerical' or 'conceptual'
         original_text TEXT NOT NULL,
-        question_template TEXT NOT NULL,
-        variables JSONB NOT NULL,
-        correct_answer_formula TEXT NOT NULL,
-        distractor_formulas JSONB NOT NULL,
+        question_template TEXT, -- Nullable because conceptual questions don't have a template
+        details JSONB NOT NULL, -- Holds variables, formulas, answers, etc.
         category TEXT,
-        status TEXT DEFAULT 'pending_review', -- 'pending_review', 'approved', 'rejected'
+        status TEXT DEFAULT 'pending_review',
         teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         subject_id INTEGER REFERENCES subjects(id) ON DELETE SET NULL,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -117,7 +117,7 @@ const createTables = async () => {
         number_of_questions INTEGER,
         max_attempts INTEGER DEFAULT 1 NOT NULL,
         test_link TEXT UNIQUE NOT NULL,
-        status TEXT DEFAULT 'draft', -- 'draft', 'active', 'completed'
+        status TEXT DEFAULT 'draft',
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -126,6 +126,7 @@ const createTables = async () => {
       CREATE TABLE IF NOT EXISTS test_questions (
         test_id INTEGER NOT NULL REFERENCES tests(id) ON DELETE CASCADE,
         question_template_id INTEGER NOT NULL REFERENCES question_templates(id) ON DELETE CASCADE,
+        is_compulsory BOOLEAN NOT NULL DEFAULT false,
         PRIMARY KEY (test_id, question_template_id)
       )
     `);
@@ -141,7 +142,7 @@ const createTables = async () => {
         start_time TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         end_time TIMESTAMPTZ,
         total_score INTEGER DEFAULT 0,
-        status TEXT DEFAULT 'in_progress', -- 'in_progress', 'completed'
+        status TEXT DEFAULT 'in_progress',
         tab_change_count INTEGER DEFAULT 0
       )
     `);
