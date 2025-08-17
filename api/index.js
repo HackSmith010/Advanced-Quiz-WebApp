@@ -1,59 +1,48 @@
-import "dotenv/config";
-import express, { json, urlencoded } from "express";
+import express from "express";
 import cors from "cors";
-import { join } from "path";
-
+import { authenticateToken } from "./middleware/auth.js";
 import { createTables } from "./database/schema.js";
 
-import authRoutes from "./routes/auth.js";
-import studentRoutes from "./routes/students.js";
-import batchRoutes from "./routes/batches.js";
-import questionRoutes from "./routes/questions.js";
-import testRoutes from "./routes/tests.js";
-import quizRoutes from "./routes/quiz.js";
-import pdfRoutes from "./routes/pdf.js";
-import subjectRoutes from "./routes/subjects.js";
+import authRouter from "./routes/auth.js";
+import studentsRouter from "./routes/students.js";
+import batchesRouter from "./routes/batches.js";
+import subjectsRouter from "./routes/subjects.js";
+import questionsRouter from "./routes/questions.js";
+import testsRouter from "./routes/tests.js";
+import pdfRouter from "./routes/pdf.js";
+import quizRouter from "./routes/quiz.js";
+import uploadsRouter from "./routes/uploads.js";
 
-export async function initApp() {
-  console.info("Initializing API...");
-  await createTables();
-  console.info("✅ Database tables checked/created successfully");
 
-  const app = express();
-  app.use(cors());
-  app.use(json());
-  app.use(urlencoded({ extended: true }));
+const app = express();
 
-  const rootDir = process.cwd();
-  app.use("/uploads", express.static(join(rootDir, "uploads")));
+app.use(cors());
+app.use(express.json());
 
-  app.use("/api/auth", authRoutes);
-  app.use("/api/students", studentRoutes);
-  app.use("/api/batches", batchRoutes);
-  app.use("/api/questions", questionRoutes);
-  app.use("/api/tests", testRoutes);
-  app.use("/api/quiz", quizRoutes);
-  app.use("/api/pdf", pdfRoutes);
-  app.use("/api/subjects", subjectRoutes);
+createTables().catch(console.error);
 
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "OK", message: "API is running" });
-  });
+app.use("/api/auth", authRouter);
+app.use("/api/quiz", quizRouter);
 
-  app.use((error, req, res, next) => {
-    console.error("Server error:", error);
-    res.status(500).json({ error: "Internal server error" });
-  });
+app.use(authenticateToken); 
+app.use("/api/students", studentsRouter);
+app.use("/api/batches", batchesRouter);
+app.use("/api/subjects", subjectsRouter);
+app.use("/api/questions", questionsRouter);
+app.use("/api/tests", testsRouter);
+app.use("/api/pdf", pdfRouter);
+app.use("/api/uploads", uploadsRouter);
 
-  console.info("API initialized.");
-  return app;
-}
 
-if (process.env.NODE_ENV !== "production" && process.env.NETLIFY !== "true") {
-  const PORT = process.env.PORT || 3001;
-  initApp().then((app) => {
+app.get("/api", (req, res) => {
+  res.send("API is running successfully.");
+});
+
+if (process.env.NODE_ENV !== 'production') {
+    const PORT = 3001;
     app.listen(PORT, () => {
-      console.log(`Server running on http://localhost:${PORT}`);
+        console.log(`Server running on http://localhost:${PORT}`);
     });
-  });
 }
+
+export const handler = app;
