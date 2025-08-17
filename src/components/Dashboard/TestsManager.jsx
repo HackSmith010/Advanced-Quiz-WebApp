@@ -123,7 +123,7 @@ const TestsManager = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showResultsModal, setShowResultsModal] = useState(false);
   const [currentResults, setCurrentResults] = useState([]);
-  const [currentTestTitle, setCurrentTestTitle] = useState("");
+  const [currentTest, setCurrentTest] = useState(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -296,7 +296,7 @@ const TestsManager = () => {
     try {
       const response = await axios.get(`/api/tests/${test.id}/results`);
       setCurrentResults(response.data);
-      setCurrentTestTitle(test.title);
+      setCurrentTest(test);
       setShowResultsModal(true);
     } catch (error) {
       console.error("Error fetching results:", error);
@@ -344,11 +344,11 @@ const TestsManager = () => {
     document.body.removeChild(link);
   };
 
-  const handleDownloadStudentPdf = async (attemptId) => {
+  const handleDownloadStudentPdf = async (attempt) => {
     setActionLoading(true);
     try {
       const response = await axios.get(
-        `/api/quiz/attempt/${attemptId}/details-for-pdf`
+        `/api/quiz/attempt/${attempt.id}/details-for-pdf`
       );
       const details = response.data;
       if (!details || details.length === 0) {
@@ -368,58 +368,100 @@ const TestsManager = () => {
         details[0].end_time || Date.now()
       ).toLocaleString();
 
-      doc.setFontSize(18);
-      doc.text(test_title, 105, 20, { align: "center" });
+      doc.setFontSize(20);
+      doc.setFont("helvetica", "bold");
+      doc.text("Quiz Performance Report", 105, 22, { align: "center" });
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "normal");
+      doc.text(test_title, 105, 32, { align: "center" });
+      doc.setLineWidth(0.5);
+      doc.line(15, 40, 195, 40);
+      doc.setFontSize(11);
+      doc.text(`Student:`, 15, 50);
+      doc.setFont("helvetica", "bold");
+      doc.text(student_name, 35, 50);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Roll Number:`, 15, 57);
+      doc.setFont("helvetica", "bold");
+      doc.text(student_roll_number, 42, 57);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Submitted On:`, 195, 50, { align: "right" });
+      doc.setFont("helvetica", "bold");
+      doc.text(submissionTime, 195, 57, { align: "right" });
+      doc.setLineWidth(0.5);
+      doc.line(15, 65, 195, 65);
+
+      let scoreStartY = 75;
+      if (attempt.tab_change_count > 1) {
+        doc.setFillColor(255, 245, 220);
+        doc.rect(15, 67, 180, 10, "F");
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(217, 119, 6);
+        doc.text(
+          `ATTEMPT AUTO-SUBMITTED after ${attempt.tab_change_count} tab changes were detected.`,
+          105,
+          73,
+          { align: "center" }
+        );
+        doc.setTextColor(0, 0, 0);
+        scoreStartY = 82;
+      }
+
       doc.setFontSize(12);
-      doc.text(`Student: ${student_name} (${student_roll_number})`, 105, 30, {
+      doc.setFont("helvetica", "bold");
+      doc.text(`Attempt #${attempt_number}`, 105, scoreStartY, {
         align: "center",
       });
-      doc.text(
-        `Attempt #${attempt_number} - Submitted: ${submissionTime}`,
-        105,
-        36,
-        { align: "center" }
-      );
-      doc.setFontSize(14);
-      doc.text(`Final Score: ${total_score}`, 105, 42, { align: "center" });
+      doc.setFontSize(22);
+      doc.text(`Final Score: ${total_score}`, 105, scoreStartY + 10, {
+        align: "center",
+      });
 
       const tableColumn = [
         "#",
         "Question",
         "Your Answer",
         "Correct Answer",
-        "Result",
+        "Marks",
       ];
-      const tableRows = details.map((item, index) => [
-        index + 1,
-        item.generated_question,
-        item.student_answer || "Not Answered",
-        item.correct_answer,
-        item.is_correct ? "Correct" : "Incorrect",
-      ]);
+      const marks_per_question = currentTest
+        ? currentTest.marks_per_question
+        : 1;
+      const tableRows = details.map((item, index) => {
+        const marksObtained = item.is_correct ? marks_per_question : 0;
+        return [
+          index + 1,
+          item.generated_question,
+          item.student_answer || "Not Answered",
+          item.correct_answer,
+          marksObtained,
+        ];
+      });
 
       autoTable(doc, {
         head: [tableColumn],
         body: tableRows,
-        startY: 55,
+        startY: scoreStartY + 20,
         theme: "grid",
         headStyles: { fillColor: [0, 83, 100] },
-        columnStyles: { 0: { cellWidth: 8 }, 4: { cellWidth: 20 } },
+        columnStyles: {
+          0: { cellWidth: 8, halign: "center" },
+          4: { cellWidth: 15, halign: "center" },
+        },
         didParseCell: (data) => {
           if (data.section === "body" && data.column.index === 4) {
-            if (data.cell.raw === "Correct")
+            if (data.cell.raw > 0) {
               data.cell.styles.textColor = [0, 128, 0];
-            else data.cell.styles.textColor = [255, 0, 0];
+              data.cell.styles.fontStyle = "bold";
+            } else {
+              data.cell.styles.textColor = [255, 0, 0];
+            }
           }
         },
       });
 
-      doc.save(
-        `Results_${student_name.replace(
-          / /g,
-          "_"
-        )}_Attempt_${attempt_number}.pdf`
-      );
+      doc.save(`${test_title.replace(/ /g, "_")}_${student_roll_number}.pdf`);
     } catch (error) {
       console.error("Error generating student PDF:", error);
       setError("Failed to generate student PDF report.");
@@ -742,12 +784,12 @@ const TestsManager = () => {
       {showResultsModal && (
         <Modal
           onClose={() => setShowResultsModal(false)}
-          title={`Results for "${currentTestTitle}"`}
+          title={`Results for "${currentTest.title}"`}
         >
           <div className="flex justify-end mb-4">
             <button
               onClick={() =>
-                downloadResultsAsCSV(currentResults, currentTestTitle)
+                downloadResultsAsCSV(currentResults, currentTest.title)
               }
               className="flex items-center text-sm bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 disabled:opacity-50"
               disabled={currentResults.length === 0}
@@ -794,9 +836,7 @@ const TestsManager = () => {
                           </div>
                           <div className="text-right">
                             <button
-                              onClick={() =>
-                                handleDownloadStudentPdf(attempt.id)
-                              }
+                              onClick={() => handleDownloadStudentPdf(attempt)}
                               className="p-1.5 text-red-600 hover:bg-red-100 rounded-full"
                               title="Download PDF for this attempt"
                             >

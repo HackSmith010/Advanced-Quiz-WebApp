@@ -7,7 +7,6 @@ function shuffleArray(array, seed) {
   const rng = seedrandom(seed);
   let currentIndex = array.length;
   let randomIndex;
-
   while (currentIndex !== 0) {
     randomIndex = Math.floor(rng() * currentIndex);
     currentIndex--;
@@ -20,18 +19,23 @@ function shuffleArray(array, seed) {
 }
 
 function evaluateFormula(formula, scope) {
-  if (!formula || typeof formula !== "string" || formula.trim() === "null") {
+  if (
+    !formula ||
+    typeof formula !== "string" ||
+    formula.trim().toLowerCase() === "null"
+  ) {
     return null;
   }
   try {
-    const result = math.evaluate(formula, scope);
+    const sanitizedFormula = formula.replace(/[{}]/g, "");
+    const result = math.evaluate(sanitizedFormula, scope);
     if (typeof result === "number" && isFinite(result)) {
-      return Math.round(result * 100) / 100;
+      return (Math.round(result * 100) / 100).toString();
     }
     return null;
   } catch (error) {
     console.error(
-      `Error evaluating formula: "${formula}" with scope:`,
+      `Error evaluating formula "${formula}" with scope:`,
       scope,
       error.message
     );
@@ -41,22 +45,30 @@ function evaluateFormula(formula, scope) {
 
 export function generateQuestionForStudent(question, rollNumber, index) {
   const seed = `${rollNumber}-${question.id}-${index}`;
-  const details = question.details;
+  const details = question.details || {}; // Always use the details object
 
   if (question.type === "numerical") {
+    // MODIFIED: Access all numerical data from the nested 'details' object
+    const variables = details.variables || {};
+    const correctAnswerFormula = details.correct_answer_formula;
+    const distractorFormulas = details.distractor_formulas || [];
+
     const scope = {};
     const rng = seedrandom(seed);
 
-    for (const key in details.variables) {
-      const originalValue = details.variables[key];
-      const randomFactor = 0.8 + rng() * 0.4;
+    for (const key in variables) {
+      const originalValue = parseFloat(variables[key]);
+      if (isNaN(originalValue)) {
+        console.error(
+          `Invalid number for variable "${key}" in Q ID: ${question.id}. Skipping.`
+        );
+        return null;
+      }
+      const randomFactor = 0.8 + rng() * 0.4; // +/- 20%
       scope[key] = Math.round(originalValue * randomFactor);
     }
 
-    const correctAnswer = evaluateFormula(
-      details.correct_answer_formula,
-      scope
-    );
+    const correctAnswer = evaluateFormula(correctAnswerFormula, scope);
     if (correctAnswer === null) {
       console.error(
         `Could not generate a valid answer for numerical question ID: ${question.id}. Skipping.`
@@ -64,13 +76,13 @@ export function generateQuestionForStudent(question, rollNumber, index) {
       return null;
     }
 
-    const distractorAnswers = details.distractor_formulas
+    const distractorAnswers = distractorFormulas
       .map((formula) => evaluateFormula(formula, scope))
       .filter((opt) => opt !== null && opt !== correctAnswer);
 
     const finalOptions = [...new Set([correctAnswer, ...distractorAnswers])];
 
-    let questionText = question.question_template;
+    let questionText = question.question_template || question.original_text;
     for (const key in scope) {
       questionText = questionText.replace(
         new RegExp(`{${key}}`, "g"),
@@ -80,16 +92,25 @@ export function generateQuestionForStudent(question, rollNumber, index) {
 
     return {
       question: questionText,
-      options: shuffleArray(finalOptions.map(String), seed),
-      correctAnswer: correctAnswer.toString(),
+      options: shuffleArray(finalOptions, seed),
+      correctAnswer: correctAnswer,
     };
   } else if (question.type === "conceptual") {
-    const options = [...details.distractors, details.correct_answer];
+    const distractors = details.distractors || [];
+    const correctAnswer = details.correct_answer;
+
+    if (!correctAnswer) {
+      console.error(
+        `Conceptual question ID ${question.id} is missing a correct answer. Skipping.`
+      );
+      return null;
+    }
+    const options = [...distractors, correctAnswer];
 
     return {
       question: question.original_text,
       options: shuffleArray(options, seed),
-      correctAnswer: details.correct_answer,
+      correctAnswer: correctAnswer,
     };
   }
 

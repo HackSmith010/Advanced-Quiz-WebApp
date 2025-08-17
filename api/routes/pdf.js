@@ -70,14 +70,11 @@ router.post(
       );
 
       if (allGeneratedQuestions.length === 0) {
-        return res
-          .status(400)
-          .json({
-            error: "No valid questions could be extracted from the PDF.",
-          });
+        return res.status(400).json({
+          error: "No valid questions could be extracted from the PDF.",
+        });
       }
 
-      // Save all successfully extracted questions to the database.
       const client = await db.getClient();
       try {
         await client.query("BEGIN");

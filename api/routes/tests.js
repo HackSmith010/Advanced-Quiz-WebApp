@@ -5,6 +5,7 @@ import { authenticateToken } from "../middleware/auth.js";
 
 const router = express.Router();
 
+// Get all tests for the logged-in teacher
 router.get("/", authenticateToken, async (req, res) => {
   try {
     const query = `
@@ -17,10 +18,9 @@ router.get("/", authenticateToken, async (req, res) => {
         t.status,
         t.test_link,
         t.created_at,
-        t.number_of_questions, -- MODIFIED: Explicitly select the new field.
-        COUNT(tq.question_template_id)::int as total_available_questions
+        t.number_of_questions,
+        t.max_attempts
       FROM tests t
-      LEFT JOIN test_questions tq ON t.id = tq.test_id
       WHERE t.teacher_id = $1
       GROUP BY t.id
       ORDER BY t.created_at DESC
@@ -33,6 +33,7 @@ router.get("/", authenticateToken, async (req, res) => {
   }
 });
 
+// Create a new test
 router.post("/", authenticateToken, async (req, res) => {
   const client = await db.getClient();
   try {
@@ -46,17 +47,23 @@ router.post("/", authenticateToken, async (req, res) => {
       compulsory_question_ids,
       random_question_ids,
     } = req.body;
-    
-    // --- MODIFIED: Corrected Validation Logic ---
-    const totalSelected = compulsory_question_ids.length + random_question_ids.length;
+
+    // Validation logic for compulsory questions
     const neededRandom = number_of_questions - compulsory_question_ids.length;
-
     if (number_of_questions <= compulsory_question_ids.length) {
-        return res.status(400).json({ error: "The total number of questions must be greater than the number of compulsory questions." });
+      return res
+        .status(400)
+        .json({
+          error:
+            "The total number of questions must be greater than the number of compulsory questions.",
+        });
     }
-
     if (random_question_ids.length < neededRandom) {
-        return res.status(400).json({ error: `You need to select at least ${neededRandom} more non-compulsory questions to meet the test total of ${number_of_questions}.` });
+      return res
+        .status(400)
+        .json({
+          error: `You need to select at least ${neededRandom} more non-compulsory questions to meet the test total of ${number_of_questions}.`,
+        });
     }
 
     await client.query("BEGIN");
@@ -68,8 +75,14 @@ router.post("/", authenticateToken, async (req, res) => {
       RETURNING id
     `;
     const testResult = await client.query(insertTestQuery, [
-      title, description, req.user.userId, duration_minutes,
-      marks_per_question, uuidv4(), number_of_questions, max_attempts,
+      title,
+      description,
+      req.user.userId,
+      duration_minutes,
+      marks_per_question,
+      uuidv4(),
+      number_of_questions,
+      max_attempts,
     ]);
     const testId = testResult.rows[0].id;
 
@@ -77,26 +90,42 @@ router.post("/", authenticateToken, async (req, res) => {
       INSERT INTO test_questions (test_id, question_template_id, is_compulsory)
       VALUES ($1, $2, $3)
     `;
-    
-    for (const questionId of compulsory_question_ids) {
-      await client.query(insertTestQuestionQuery, [testId, questionId, true]);
-    }
-    for (const questionId of random_question_ids) {
-      await client.query(insertTestQuestionQuery, [testId, questionId, false]);
+
+    // Use a Set to prevent inserting the same question twice
+    const allQuestionIds = new Set([
+      ...compulsory_question_ids,
+      ...random_question_ids,
+    ]);
+
+    for (const questionId of allQuestionIds) {
+      const isCompulsory = compulsory_question_ids.includes(questionId);
+      await client.query(insertTestQuestionQuery, [
+        testId,
+        questionId,
+        isCompulsory,
+      ]);
     }
 
     await client.query("COMMIT");
     res.status(201).json({ message: "Test created successfully" });
-
   } catch (error) {
     await client.query("ROLLBACK");
     console.error("Error creating test:", error);
+    if (error.code === "23505") {
+      return res
+        .status(409)
+        .json({
+          error:
+            "An unexpected duplicate question error occurred. Please try again.",
+        });
+    }
     res.status(500).json({ error: "Internal server error" });
   } finally {
     client.release();
   }
 });
 
+// Update a test's status (draft, active, completed)
 router.put("/:id/status", authenticateToken, async (req, res) => {
   try {
     const { status } = req.body;
@@ -109,7 +138,9 @@ router.put("/:id/status", authenticateToken, async (req, res) => {
       [status, testId, req.user.userId]
     );
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: "Test not found" });
+      return res
+        .status(404)
+        .json({ error: "Test not found or permission denied" });
     }
     res.json({ message: "Test status updated successfully" });
   } catch (error) {
@@ -118,14 +149,21 @@ router.put("/:id/status", authenticateToken, async (req, res) => {
   }
 });
 
+// Get all results for a specific test
 router.get("/:id/results", authenticateToken, async (req, res) => {
   try {
     const query = `
-      SELECT ta.*, s.name as student_name
+      SELECT 
+        ta.id,
+        ta.student_name,
+        ta.student_roll_number,
+        ta.total_score,
+        ta.end_time,
+        ta.attempt_number,
+        ta.tab_change_count
       FROM test_attempts ta
-      LEFT JOIN students s ON ta.student_id = s.id
       WHERE ta.test_id = $1
-      ORDER BY ta.total_score DESC, ta.end_time ASC
+      ORDER BY ta.student_name, ta.attempt_number ASC
     `;
     const result = await db.query(query, [req.params.id]);
     res.json(result.rows);

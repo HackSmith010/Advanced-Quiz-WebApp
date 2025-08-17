@@ -19,19 +19,31 @@ async function callGeminiAPI(text) {
   const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
 
   const prompt = `
-    You are a meticulous data extraction engine. Your task is to analyze the provided text chunk and convert all questions into a PERFECTLY FORMED JSON ARRAY.
+    You are a meticulous data extraction engine. Your sole purpose is to convert questions from a given text chunk into a PERFECTLY FORMED JSON array.
 
     CRITICAL DIRECTIVES:
-    1.  Your entire output MUST be a single, valid JSON array. Do NOT use markdown like \`\`\`json or other text.
-    2.  If the text chunk contains no questions, return an empty array [].
-    3.  Self-Correct: Before outputting, you MUST validate your own work to ensure the result is syntactically perfect JSON.
+    1.  Your entire output MUST be a single, valid JSON array. Do NOT use markdown or other text.
+    2.  **Use Placeholders in Formulas (VERY IMPORTANT):** For "numerical" questions, the "correct_answer_formula" and "distractor_formulas" fields MUST use the variable placeholders you defined (e.g., "{distance} / {time}"), NOT the original numbers from the text (e.g., "600 / 5"). This is the most important rule.
+    3.  If no questions are found, return an empty array [].
+    4.  Self-Correct: Before outputting, you MUST validate your own work to ensure the result is syntactically perfect JSON.
+    5. Only Include the question from the original text don't include its options or anything else.s
 
     ---
-    **SCHEMA for "numerical" questions:**
-    { "type": "numerical", "original_text": "...", "question_template": "...", "variables": {...}, "correct_answer_formula": "...", "distractor_formulas": [...], "category": "..." }
+    **SCHEMA & EXAMPLE for "numerical" questions:**
+    - "type": "numerical"
+    - "original_text": "A person crosses a 600 m street in 5 minutes. What is the speed in km/h?"
+    - "question_template": "A person crosses a {distance} m street in {time} minutes. What is the speed in km/h?"
+    - "variables": {"distance": 600, "time": 5}
+    - "correct_answer_formula": "(distance / 1000) / (time / 60)"  <-- CORRECT: Uses placeholders.
+    - "distractor_formulas": [ 
+        "(distance / time) * (60 / 1000)", 
+        "distance / (time * 60)", 
+        "(distance * 60) / (time * 1000)"
+      ]
+    - "category": "Speed Calculation"
     ---
     **SCHEMA for "conceptual" questions:**
-    { "type": "conceptual", "original_text": "...", "question_template": null, "details": { "correct_answer": "...", "distractors": [...] }, "category": "..." }
+    - "type": "conceptual", "original_text": "...", "question_template": null, "details": { "correct_answer": "...", "distractors": [...] }, "category": "..."
     ---
     Text Chunk to Analyze:
     ${text}

@@ -2,9 +2,16 @@ import express from "express";
 import seedrandom from "seedrandom";
 import { db } from "../database/schema.js";
 import { generateQuestionForStudent } from "../utils/questionGenerator.js";
+import { authenticateToken } from "../middleware/auth.js"; // Assuming you might want to protect some routes
 
 const router = express.Router();
 
+/**
+ * Shuffles an array deterministically using a seed.
+ * @param {Array} array The array to shuffle.
+ * @param {string} seed The seed for the random number generator.
+ * @returns {Array} The shuffled array.
+ */
 function shuffleArray(array, seed) {
   const rng = seedrandom(seed);
   let currentIndex = array.length;
@@ -20,28 +27,48 @@ function shuffleArray(array, seed) {
   return array;
 }
 
-const getQuestionsForAttempt = async (testId, rollNumber) => {
+/**
+ * A centralized function to get the exact questions a student should see for an attempt.
+ * @param {number} testId The ID of the test.
+ * @param {string} rollNumber The student's roll number for seeding.
+ * @param {number} attemptNumber The specific attempt number for unique shuffling.
+ * @returns {Promise<object>} An object containing the selected templates and test details.
+ */
+const getQuestionsForAttempt = async (testId, rollNumber, attemptNumber) => {
   const testResult = await db.query("SELECT * FROM tests WHERE id = $1", [
     testId,
   ]);
   const test = testResult.rows[0];
 
   const templatesResult = await db.query(
-    `SELECT * FROM question_templates qt
+    `SELECT qt.*, tq.is_compulsory FROM question_templates qt
        JOIN test_questions tq ON qt.id = tq.question_template_id
        WHERE tq.test_id = $1`,
     [testId]
   );
-  let questionTemplates = templatesResult.rows;
-  const shuffledTemplates = shuffleArray(questionTemplates, rollNumber);
-  const selectedTemplates = shuffledTemplates.slice(
+
+  const allQuestions = templatesResult.rows;
+  const compulsoryQuestions = allQuestions.filter((q) => q.is_compulsory);
+  const randomPoolQuestions = allQuestions.filter((q) => !q.is_compulsory);
+  const neededRandomCount =
+    test.number_of_questions - compulsoryQuestions.length;
+
+  // The seed now includes the attempt number, creating a unique shuffle for each attempt.
+  const attemptSeed = `${rollNumber}-${attemptNumber}`;
+  const shuffledRandomPool = shuffleArray(randomPoolQuestions, attemptSeed);
+  const selectedRandomQuestions = shuffledRandomPool.slice(
     0,
-    test.number_of_questions
+    neededRandomCount
   );
-  return { selectedTemplates, test };
+
+  let finalTemplates = [...compulsoryQuestions, ...selectedRandomQuestions];
+  // The final shuffle also uses the unique attempt seed.
+  finalTemplates = shuffleArray(finalTemplates, `${attemptSeed}-final`);
+
+  return { selectedTemplates: finalTemplates, test };
 };
 
-// MODIFIED: This route now correctly validates that the student belongs to the teacher who created the test.
+// Gets public test info and any past attempts for a given student
 router.get("/test/:testLink", async (req, res) => {
   try {
     const { testLink } = req.params;
@@ -53,25 +80,22 @@ router.get("/test/:testLink", async (req, res) => {
       [testLink]
     );
     const test = testResult.rows[0];
-    if (!test) {
+    if (!test)
       return res.status(404).json({ error: "Test not found or not active" });
-    }
 
     let attempts = [];
     if (roll_number && name) {
-      // This query now ensures the student's teacher_id matches the test's teacher_id.
       const studentResult = await db.query(
         "SELECT id FROM students WHERE roll_number = $1 AND LOWER(name) = LOWER($2) AND teacher_id = $3",
         [roll_number, name, test.teacher_id]
       );
 
       if (studentResult.rows.length === 0) {
-        // If no student is found for that teacher, send an authorization error.
         return res
           .status(403)
           .json({
             error:
-              "You are not authorized to take this test. Please check your details.",
+              "You are not authorized for this test. Please check your details.",
           });
       }
 
@@ -90,7 +114,7 @@ router.get("/test/:testLink", async (req, res) => {
   }
 });
 
-// This route starts a test or a new attempt
+// Starts a test or a new attempt
 router.post("/test/:testLink/start", async (req, res) => {
   const { student_name, roll_number } = req.body;
   const { testLink } = req.params;
@@ -130,9 +154,11 @@ router.post("/test/:testLink/start", async (req, res) => {
         });
     }
 
+    const nextAttemptNumber = attemptCount + 1;
     const { selectedTemplates } = await getQuestionsForAttempt(
       test.id,
-      roll_number
+      roll_number,
+      nextAttemptNumber
     );
 
     const generatedQuestions = selectedTemplates
@@ -145,11 +171,7 @@ router.post("/test/:testLink/start", async (req, res) => {
         return questionData ? { ...questionData, id: template.id } : null;
       })
       .filter((q) => q !== null)
-      .map((q) => ({
-        id: q.id,
-        question: q.question,
-        options: q.options,
-      }));
+      .map((q) => ({ id: q.id, question: q.question, options: q.options }));
 
     if (generatedQuestions.length === 0) {
       return res
@@ -163,7 +185,7 @@ router.post("/test/:testLink/start", async (req, res) => {
     res.json({
       duration_minutes: test.duration_minutes,
       questions: generatedQuestions,
-      attempt_number: attemptCount + 1,
+      attempt_number: nextAttemptNumber,
     });
   } catch (error) {
     console.error("Error starting test attempt:", error);
@@ -171,7 +193,7 @@ router.post("/test/:testLink/start", async (req, res) => {
   }
 });
 
-// This route submits the test
+// Submits the test
 router.post("/attempt/:testLink/submit", async (req, res) => {
   const { testLink } = req.params;
   const { roll_number, name, answers, attempt_number } = req.body;
@@ -192,7 +214,8 @@ router.post("/attempt/:testLink/submit", async (req, res) => {
 
     const { selectedTemplates } = await getQuestionsForAttempt(
       test.id,
-      roll_number
+      roll_number,
+      attempt_number
     );
 
     const attemptQuery = `INSERT INTO test_attempts (test_id, student_id, student_name, student_roll_number, status, attempt_number) VALUES ($1, $2, $3, $4, 'completed', $5) RETURNING id`;
@@ -261,27 +284,41 @@ router.post("/attempt/:testLink/submit", async (req, res) => {
   }
 });
 
-// This route gets details for the PDF
+// Gets details for the PDF
 router.get("/attempt/:attemptId/details-for-pdf", async (req, res) => {
   try {
     const { attemptId } = req.params;
+
     const attemptResult = await db.query(
       `SELECT * FROM test_attempts WHERE id = $1`,
       [attemptId]
     );
     const attempt = attemptResult.rows[0];
-    if (!attempt) return res.status(404).json({ error: "Attempt not found" });
+    if (!attempt) {
+      return res.status(404).json({ error: "Attempt not found" });
+    }
 
-    const detailsResult = await db.query(
-      `SELECT t.title as test_title, sa.* FROM student_answers sa
-             JOIN test_attempts ta ON sa.attempt_id = ta.id
-             JOIN tests t ON ta.test_id = t.id
-             WHERE sa.attempt_id = $1 ORDER BY sa.id ASC`,
+    const testResult = await db.query(
+      `SELECT title, marks_per_question FROM tests WHERE id = $1`,
+      [attempt.test_id]
+    );
+    const test = testResult.rows[0];
+
+    const answersResult = await db.query(
+      `SELECT * FROM student_answers WHERE attempt_id = $1 ORDER BY id ASC`,
       [attemptId]
     );
 
-    const fullDetails = detailsResult.rows.map((row) => ({
+    if (answersResult.rows.length === 0) {
+      return res
+        .status(404)
+        .json({ error: "No answer details found for this attempt." });
+    }
+
+    const fullDetails = answersResult.rows.map((row) => ({
       ...row,
+      test_title: test.title,
+      marks_per_question: test.marks_per_question,
       student_name: attempt.student_name,
       student_roll_number: attempt.student_roll_number,
       total_score: attempt.total_score,
