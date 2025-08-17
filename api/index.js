@@ -13,6 +13,7 @@ import testRoutes from './routes/tests.js';
 import quizRoutes from './routes/quiz.js';
 import pdfRoutes from './routes/pdf.js';
 import subjectRoutes from './routes/subjects.js';
+import uploadsRouter from './routes/uploads.js';
 
 export async function initApp() {
   console.info('Initializing API...');
@@ -35,6 +36,7 @@ export async function initApp() {
   app.use('/api/quiz', quizRoutes.default || quizRoutes);
   app.use('/api/pdf', pdfRoutes.default || pdfRoutes);
   app.use('/api/subjects', subjectRoutes.default || subjectRoutes);
+  app.use('/api/uploads', uploadsRouter);
 
   app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', message: 'IntelliQuiz AI API is running' });
