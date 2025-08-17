@@ -82,6 +82,17 @@ const createTables = async () => {
     `);
 
     await client.query(`
+    CREATE TABLE IF NOT EXISTS pdf_uploads (
+      id SERIAL PRIMARY KEY,
+      display_name TEXT NOT NULL,
+      original_name TEXT NOT NULL,
+      status TEXT DEFAULT 'processing', -- Add this line
+      teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS subjects (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,

@@ -1,48 +1,59 @@
-import express from "express";
-import cors from "cors";
-import { authenticateToken } from "./middleware/auth.js";
-import { createTables } from "./database/schema.js";
+import 'dotenv/config';
+import express, { json, urlencoded } from 'express';
+import cors from 'cors';
+import { join } from 'path';
 
-import authRouter from "./routes/auth.js";
-import studentsRouter from "./routes/students.js";
-import batchesRouter from "./routes/batches.js";
-import subjectsRouter from "./routes/subjects.js";
-import questionsRouter from "./routes/questions.js";
-import testsRouter from "./routes/tests.js";
-import pdfRouter from "./routes/pdf.js";
-import quizRouter from "./routes/quiz.js";
-import uploadsRouter from "./routes/uploads.js";
+import { createTables } from './database/schema.js';
 
+import authRoutes from './routes/auth.js';
+import studentRoutes from './routes/students.js';
+import batchRoutes from './routes/batches.js';
+import questionRoutes from './routes/questions.js';
+import testRoutes from './routes/tests.js';
+import quizRoutes from './routes/quiz.js';
+import pdfRoutes from './routes/pdf.js';
+import subjectRoutes from './routes/subjects.js';
 
-const app = express();
+export async function initApp() {
+  console.info('Initializing API...');
+  await createTables();
+  console.info('✅ Database tables checked/created successfully');
 
-app.use(cors());
-app.use(express.json());
+  const app = express();
+  app.use(cors());
+  app.use(json());
+  app.use(urlencoded({ extended: true }));
 
-createTables().catch(console.error);
+  const rootDir = process.cwd();
+  app.use('/uploads', express.static(join(rootDir, 'uploads')));
 
-app.use("/api/auth", authRouter);
-app.use("/api/quiz", quizRouter);
+  app.use('/api/auth', authRoutes.default || authRoutes);
+  app.use('/api/students', studentRoutes.default || studentRoutes);
+  app.use('/api/batches', batchRoutes.default || batchRoutes);
+  app.use('/api/questions', questionRoutes.default || questionRoutes);
+  app.use('/api/tests', testRoutes.default || testRoutes);
+  app.use('/api/quiz', quizRoutes.default || quizRoutes);
+  app.use('/api/pdf', pdfRoutes.default || pdfRoutes);
+  app.use('/api/subjects', subjectRoutes.default || subjectRoutes);
 
-app.use(authenticateToken); 
-app.use("/api/students", studentsRouter);
-app.use("/api/batches", batchesRouter);
-app.use("/api/subjects", subjectsRouter);
-app.use("/api/questions", questionsRouter);
-app.use("/api/tests", testsRouter);
-app.use("/api/pdf", pdfRouter);
-app.use("/api/uploads", uploadsRouter);
+  app.get('/api/health', (req, res) => {
+    res.json({ status: 'OK', message: 'IntelliQuiz AI API is running' });
+  });
 
+  app.use((error, req, res, next) => {
+    console.error('Server error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  });
 
-app.get("/api", (req, res) => {
-  res.send("API is running successfully.");
-});
-
-if (process.env.NODE_ENV !== 'production') {
-    const PORT = 3001;
-    app.listen(PORT, () => {
-        console.log(`Server running on http://localhost:${PORT}`);
-    });
+  console.info('API initialized.');
+  return app;
 }
 
-export const handler = app;
+if (process.env.NODE_ENV !== 'production' && process.env.NETLIFY !== 'true') {
+  const PORT = process.env.PORT || 3001;
+  initApp().then((app) => {
+    app.listen(PORT, () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  });
+}

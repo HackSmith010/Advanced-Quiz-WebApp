@@ -1,73 +1,95 @@
 import express from 'express';
 import multer from 'multer';
+import pdf from 'pdf-parse';
 import { db } from '../database/schema.js';
+import { processQuestionsWithAI } from '../utils/aiProcessor.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// This route now handles GET requests to fetch upload history
-router.get('/uploads', authenticateToken, async (req, res) => {
-  try {
-    const query = `
-      SELECT id, display_name, original_name, status, created_at 
-      FROM pdf_uploads 
-      WHERE teacher_id = $1 
-      ORDER BY created_at DESC
-    `;
-    const result = await db.query(query, [req.user.userId]);
-    res.json(result.rows);
-  } catch (error){
-    console.error('Error fetching uploads:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// This route handles the POST request to upload a new PDF
 router.post('/upload', authenticateToken, upload.single('pdf'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No PDF file uploaded.' });
   }
 
-  const { displayName } = req.body;
-  const client = await db.getClient();
-  
   try {
-    const insertUploadQuery = `
-        INSERT INTO pdf_uploads (display_name, original_name, teacher_id, status)
-        VALUES ($1, $2, $3, 'processing')
-        RETURNING id
-    `;
-    const result = await client.query(insertUploadQuery, [
-        displayName,
-        req.file.originalname,
-        req.user.userId
-    ]);
-    const uploadId = result.rows[0].id;
-
-    const backgroundFunctionUrl = `${process.env.URL}/.netlify/functions/process-pdf-background`;
-
-    const payload = {
-      fileBuffer: req.file.buffer,
-      userId: req.user.userId,
-      uploadId: uploadId,
+    const options = {
+        pagerender: (pageData) => {
+            return pageData.getTextContent({ normalizeWhitespace: true })
+                .then(textContent => textContent.items.map(item => item.str).join(' '));
+        }
     };
 
-    fetch(backgroundFunctionUrl, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-      headers: { "x-netlify-lambda-asynchronous-ok": "true" },
-    });
+    const data = await pdf(req.file.buffer, options);
+    const totalPages = data.numpages;
+    let allGeneratedQuestions = [];
 
-    res.status(202).json({ 
-      message: "Your PDF is being processed in the background. Questions will appear shortly." 
+    const pagesText = data.text.split(/\n\n\n/).filter(p => p.trim().length > 0);
+
+    // Process the PDF one page at a time.
+    for (let i = 0; i < pagesText.length; i++) {
+      const pageText = pagesText[i];
+      console.log(`\nProcessing Page ${i + 1} of ${totalPages}...`);
+      
+      if (!pageText || pageText.trim().length < 20) {
+        console.log(`Page ${i + 1} has insufficient content. Skipping.`);
+        continue;
+      }
+      
+      try {
+        const generatedQuestions = await processQuestionsWithAI(pageText);
+        console.log(`✅ AI found ${generatedQuestions.length} questions on page ${i + 1}.`);
+
+        if (generatedQuestions.length > 0) {
+          allGeneratedQuestions.push(...generatedQuestions);
+        }
+      } catch (aiError) {
+        console.error(`AI processing failed for page ${i + 1}. Error:`, aiError.message);
+      }
+    }
+
+    console.log(`\nAI processing complete. Found ${allGeneratedQuestions.length} total valid questions.`);
+
+    if (allGeneratedQuestions.length === 0) {
+      return res.status(400).json({ 
+        error: 'No valid questions could be extracted from the PDF.' 
+      });
+    }
+    
+    // Save all successfully extracted questions to the database.
+    const client = await db.getClient();
+    try {
+        await client.query('BEGIN');
+        const insertQuery = `
+            INSERT INTO question_templates (type, original_text, question_template, category, details, teacher_id, status)
+            VALUES ($1, $2, $3, $4, $5, $6, 'pending_review')
+        `;
+        for (const q of allGeneratedQuestions) {
+            const details = (q.type === 'numerical') 
+              ? { variables: q.variables, correct_answer_formula: q.correct_answer_formula, distractor_formulas: q.distractor_formulas }
+              : q.details;
+            
+            await client.query(insertQuery, [
+                q.type, q.original_text, q.question_template, q.category, details, req.user.userId
+            ]);
+        }
+        await client.query('COMMIT');
+    } catch (dbError) {
+        await client.query('ROLLBACK');
+        console.error('Database error during question insertion:', dbError);
+        return res.status(500).json({ error: 'Failed to save questions.' });
+    } finally {
+        client.release();
+    }
+
+    res.status(201).json({ 
+      message: `Successfully added ${allGeneratedQuestions.length} new questions for review.` 
     });
 
   } catch (error) {
-    console.error('Error in upload route:', error);
-    res.status(500).json({ error: 'Failed to start PDF processing.' });
-  } finally {
-      client.release();
+    console.error('Error processing PDF upload:', error);
+    res.status(500).json({ error: error.message || 'Failed to process PDF.' });
   }
 });
 
