@@ -368,6 +368,7 @@ const TestsManager = () => {
         details[0].end_time || Date.now()
       ).toLocaleString();
 
+      // --- PDF Header ---
       doc.setFontSize(20);
       doc.setFont("helvetica", "bold");
       doc.text("Quiz Performance Report", 105, 22, { align: "center" });
