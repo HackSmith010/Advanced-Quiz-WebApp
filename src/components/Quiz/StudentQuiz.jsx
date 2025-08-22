@@ -16,7 +16,7 @@ import {
   X,
 } from "lucide-react";
 
-// Warning Modal for Anti-Cheating
+// The WarningModal and StudentLobby components remain the same...
 const WarningModal = ({ isOpen, onConfirm }) => {
   if (!isOpen) return null;
   return (
@@ -45,8 +45,6 @@ const WarningModal = ({ isOpen, onConfirm }) => {
     </div>
   );
 };
-
-// Sub-component for the pre-quiz "Lobby" view
 const StudentLobby = ({
   test,
   attempts,
@@ -158,36 +156,87 @@ const StudentQuiz = () => {
   const { testLink } = useParams();
 
   const [view, setView] = useState(
-    () => sessionStorage.getItem("quizView") || "login"
+    () => sessionStorage.getItem(`quizView_${testLink}`) || "login"
   );
   const [studentInfo, setStudentInfo] = useState(() => {
-    const savedInfo = sessionStorage.getItem("studentInfo");
+    const savedInfo = sessionStorage.getItem(`studentInfo_${testLink}`);
     return savedInfo ? JSON.parse(savedInfo) : { name: "", rollNumber: "" };
+  });
+  const [questions, setQuestions] = useState(() => {
+    const savedQuestions = sessionStorage.getItem(`questions_${testLink}`);
+    return savedQuestions ? JSON.parse(savedQuestions) : [];
+  });
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(() => {
+    const savedIndex = sessionStorage.getItem(
+      `currentQuestionIndex_${testLink}`
+    );
+    return savedIndex ? parseInt(savedIndex, 10) : 0;
+  });
+  const [selectedAnswers, setSelectedAnswers] = useState(() => {
+    const savedAnswers = sessionStorage.getItem(`selectedAnswers_${testLink}`);
+    return savedAnswers ? JSON.parse(savedAnswers) : {};
+  });
+  const [timeRemaining, setTimeRemaining] = useState(() => {
+    const savedTime = sessionStorage.getItem(`timeRemaining_${testLink}`);
+    return savedTime ? parseInt(savedTime, 10) : null;
+  });
+  const [attemptNumber, setAttemptNumber] = useState(() => {
+    const savedAttempt = sessionStorage.getItem(`attemptNumber_${testLink}`);
+    return savedAttempt ? parseInt(savedAttempt, 10) : 1;
+  });
+  const [finalResult, setFinalResult] = useState(() => {
+    const savedResult = sessionStorage.getItem(`finalResult_${testLink}`);
+    return savedResult ? JSON.parse(savedResult) : null;
   });
 
   const [testInfo, setTestInfo] = useState(null);
-  const [questions, setQuestions] = useState([]);
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [selectedAnswers, setSelectedAnswers] = useState({});
-  const [timeRemaining, setTimeRemaining] = useState(null);
   const [pastAttempts, setPastAttempts] = useState([]);
-  const [attemptNumber, setAttemptNumber] = useState(1);
-  const [finalResult, setFinalResult] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [tabChangeCount, setTabChangeCount] = useState(0);
   const [showWarning, setShowWarning] = useState(false);
   const [showSubmitWarning, setShowSubmitWarning] = useState(false);
-  const resultsRef = useRef();
+  const isUnloading = useRef(false);
 
   useEffect(() => {
-    sessionStorage.setItem("quizView", view);
-  }, [view]);
-
+    sessionStorage.setItem(`quizView_${testLink}`, view);
+  }, [view, testLink]);
   useEffect(() => {
-    sessionStorage.setItem("studentInfo", JSON.stringify(studentInfo));
-  }, [studentInfo]);
+    sessionStorage.setItem(
+      `studentInfo_${testLink}`,
+      JSON.stringify(studentInfo)
+    );
+  }, [studentInfo, testLink]);
+  useEffect(() => {
+    sessionStorage.setItem(`questions_${testLink}`, JSON.stringify(questions));
+  }, [questions, testLink]);
+  useEffect(() => {
+    sessionStorage.setItem(
+      `currentQuestionIndex_${testLink}`,
+      currentQuestionIndex
+    );
+  }, [currentQuestionIndex, testLink]);
+  useEffect(() => {
+    sessionStorage.setItem(
+      `selectedAnswers_${testLink}`,
+      JSON.stringify(selectedAnswers)
+    );
+  }, [selectedAnswers, testLink]);
+  useEffect(() => {
+    if (timeRemaining !== null)
+      sessionStorage.setItem(`timeRemaining_${testLink}`, timeRemaining);
+  }, [timeRemaining, testLink]);
+  useEffect(() => {
+    sessionStorage.setItem(`attemptNumber_${testLink}`, attemptNumber);
+  }, [attemptNumber, testLink]);
+  useEffect(() => {
+    if (finalResult)
+      sessionStorage.setItem(
+        `finalResult_${testLink}`,
+        JSON.stringify(finalResult)
+      );
+  }, [finalResult, testLink]);
 
   useEffect(() => {
     const fetchAndRestoreState = async () => {
@@ -196,7 +245,11 @@ const StudentQuiz = () => {
         const res = await axios.get(`/api/quiz/test/${testLink}`);
         setTestInfo(res.data.test);
 
-        if (view === "lobby" && studentInfo.name && studentInfo.rollNumber) {
+        if (
+          (view === "lobby" || view === "quiz" || view === "submitted") &&
+          studentInfo.name &&
+          studentInfo.rollNumber
+        ) {
           const attemptsRes = await axios.get(`/api/quiz/test/${testLink}`, {
             params: {
               name: studentInfo.name,
@@ -214,7 +267,15 @@ const StudentQuiz = () => {
       }
     };
     fetchAndRestoreState();
-  }, [testLink, view]);
+  }, [testLink]);
+
+  const clearQuizSession = () => {
+    sessionStorage.removeItem(`questions_${testLink}`);
+    sessionStorage.removeItem(`currentQuestionIndex_${testLink}`);
+    sessionStorage.removeItem(`selectedAnswers_${testLink}`);
+    sessionStorage.removeItem(`timeRemaining_${testLink}`);
+    sessionStorage.removeItem(`attemptNumber_${testLink}`);
+  };
 
   const handleSubmitTest = useCallback(
     async (isForced = false) => {
@@ -249,6 +310,7 @@ const StudentQuiz = () => {
           forced: isForced,
         });
         setView("submitted");
+        clearQuizSession();
       } catch (err) {
         setError("Failed to submit test. Please check your connection.");
         setView("lobby");
@@ -274,7 +336,26 @@ const StudentQuiz = () => {
     eventsToDisable.forEach((event) =>
       document.addEventListener(event, preventDefault)
     );
+
+    const handleBeforeUnload = (event) => {
+      isUnloading.current = true;
+      if (view === "quiz" && !finalResult) {
+        const payload = {
+          name: studentInfo.name.trim(),
+          roll_number: studentInfo.rollNumber.trim(),
+          answers: selectedAnswers,
+          attempt_number: attemptNumber,
+        };
+        navigator.sendBeacon(
+          `/api/quiz/attempt/${testLink}/beacon-submit`,
+          JSON.stringify(payload)
+        );
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
     const handleVisibilityChange = () => {
+      if (isUnloading.current) return;
       if (document.hidden) {
         const newCount = tabChangeCount + 1;
         setTabChangeCount(newCount);
@@ -283,13 +364,23 @@ const StudentQuiz = () => {
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
       eventsToDisable.forEach((event) =>
         document.removeEventListener(event, preventDefault)
       );
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, [view, tabChangeCount, handleSubmitTest]);
+  }, [
+    view,
+    tabChangeCount,
+    handleSubmitTest,
+    studentInfo,
+    selectedAnswers,
+    attemptNumber,
+    testLink,
+  ]);
 
   useEffect(() => {
     if (timeRemaining === 0 && view === "quiz") handleSubmitTest(true);
@@ -387,7 +478,7 @@ const StudentQuiz = () => {
       doc.setFontSize(22);
       doc.text(
         `Final Score: ${finalResult.score} / ${
-          questions.length * testInfo.marks_per_question
+          finalResult.questions.length * testInfo.marks_per_question
         }`,
         105,
         85,
@@ -645,7 +736,7 @@ const StudentQuiz = () => {
                 </button>
               ) : (
                 <button
-                  onClick={handleSubmitTest}
+                  onClick={() => handleSubmitTest(false)}
                   disabled={
                     submitting ||
                     Object.keys(selectedAnswers).length < questions.length
@@ -668,6 +759,14 @@ const StudentQuiz = () => {
           </div>
         );
       case "submitted":
+        if (!finalResult) {
+          return (
+            <div className="text-center">
+              <p>Loading results...</p>
+              <Loader2 className="h-8 w-8 animate-spin mt-4" />
+            </div>
+          );
+        }
         return (
           <div className="max-w-3xl w-full">
             <div className="bg-white p-8 rounded-xl shadow-lg scroll-smooth">
@@ -692,7 +791,8 @@ const StudentQuiz = () => {
                 <p className="text-5xl font-bold text-siemens-primary">
                   {finalResult.score}{" "}
                   <span className="text-3xl text-gray-500">
-                    / {questions.length * testInfo.marks_per_question}
+                    /{" "}
+                    {finalResult.questions.length * testInfo.marks_per_question}
                   </span>
                 </p>
               </div>
@@ -728,15 +828,16 @@ const StudentQuiz = () => {
               </div>
             </div>
             <div className="text-center mt-8 space-x-4">
-              {/* <button
+              <button
                 onClick={() => {
                   setView("lobby");
                   setError("");
+                  clearQuizSession();
                 }}
                 className="bg-gray-200 text-gray-800 py-3 px-6 rounded-lg hover:bg-gray-300"
               >
                 Back to Lobby
-              </button> */}
+              </button>
               <button
                 onClick={handleDownloadPdf}
                 disabled={loading}
