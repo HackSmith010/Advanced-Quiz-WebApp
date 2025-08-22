@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "react-router-dom";
 import axios from "axios";
 import jsPDF from "jspdf";
-import html2canvas from "html2canvas";
+import autoTable from "jspdf-autotable";
 import {
   Loader2,
   AlertTriangle,
@@ -111,7 +111,8 @@ const StudentLobby = ({
                       #{att.attempt_number}
                     </td>
                     <td className="py-2 px-3">
-                      {att.total_score} / {test.number_of_questions}
+                      {att.total_score} /{" "}
+                      {test.number_of_questions * test.marks_per_question}
                     </td>
                     <td className="py-2 px-3">
                       {new Date(att.end_time).toLocaleDateString()}
@@ -155,17 +156,25 @@ const StudentLobby = ({
 // Main Student Quiz Component
 const StudentQuiz = () => {
   const { testLink } = useParams();
-  const [view, setView] = useState("login");
+
+  const [view, setView] = useState(
+    () => sessionStorage.getItem("quizView") || "login"
+  );
+  const [studentInfo, setStudentInfo] = useState(() => {
+    const savedInfo = sessionStorage.getItem("studentInfo");
+    return savedInfo ? JSON.parse(savedInfo) : { name: "", rollNumber: "" };
+  });
+
   const [testInfo, setTestInfo] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState({});
   const [timeRemaining, setTimeRemaining] = useState(null);
-  const [studentInfo, setStudentInfo] = useState({ name: "", rollNumber: "" });
   const [pastAttempts, setPastAttempts] = useState([]);
   const [attemptNumber, setAttemptNumber] = useState(1);
   const [finalResult, setFinalResult] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [tabChangeCount, setTabChangeCount] = useState(0);
   const [showWarning, setShowWarning] = useState(false);
@@ -173,18 +182,39 @@ const StudentQuiz = () => {
   const resultsRef = useRef();
 
   useEffect(() => {
-    const fetchBasicTestInfo = async () => {
+    sessionStorage.setItem("quizView", view);
+  }, [view]);
+
+  useEffect(() => {
+    sessionStorage.setItem("studentInfo", JSON.stringify(studentInfo));
+  }, [studentInfo]);
+
+  useEffect(() => {
+    const fetchAndRestoreState = async () => {
       try {
+        setLoading(true);
         const res = await axios.get(`/api/quiz/test/${testLink}`);
         setTestInfo(res.data.test);
+
+        if (view === "lobby" && studentInfo.name && studentInfo.rollNumber) {
+          const attemptsRes = await axios.get(`/api/quiz/test/${testLink}`, {
+            params: {
+              name: studentInfo.name,
+              roll_number: studentInfo.rollNumber,
+            },
+          });
+          setPastAttempts(attemptsRes.data.attempts);
+        }
       } catch (err) {
         setError("Invalid or inactive test link.");
+        sessionStorage.clear();
+        setView("login");
       } finally {
         setLoading(false);
       }
     };
-    fetchBasicTestInfo();
-  }, [testLink]);
+    fetchAndRestoreState();
+  }, [testLink, view]);
 
   const handleSubmitTest = useCallback(
     async (isForced = false) => {
@@ -202,13 +232,13 @@ const StudentQuiz = () => {
       )
         return;
 
-      setLoading(true);
+      setSubmitting(true);
       try {
         const response = await axios.post(
           `/api/quiz/attempt/${testLink}/submit`,
           {
-            name: studentInfo.name,
-            roll_number: studentInfo.rollNumber,
+            name: studentInfo.name.trim(),
+            roll_number: studentInfo.rollNumber.trim(),
             answers: selectedAnswers,
             attempt_number: attemptNumber,
           }
@@ -223,7 +253,7 @@ const StudentQuiz = () => {
         setError("Failed to submit test. Please check your connection.");
         setView("lobby");
       } finally {
-        setLoading(false);
+        setSubmitting(false);
       }
     },
     [
@@ -274,11 +304,17 @@ const StudentQuiz = () => {
     setLoading(true);
     setError("");
     try {
+      const trimmedName = studentInfo.name.trim();
+      const trimmedRollNumber = studentInfo.rollNumber.trim();
       const res = await axios.get(`/api/quiz/test/${testLink}`, {
-        params: { roll_number: studentInfo.rollNumber, name: studentInfo.name },
+        params: {
+          name: trimmedName,
+          roll_number: trimmedRollNumber,
+        },
       });
       setTestInfo(res.data.test);
       setPastAttempts(res.data.attempts);
+      setStudentInfo({ name: trimmedName, rollNumber: trimmedRollNumber });
       setView("lobby");
     } catch (err) {
       setError(
@@ -295,8 +331,8 @@ const StudentQuiz = () => {
     setError("");
     try {
       const response = await axios.post(`/api/quiz/test/${testLink}/start`, {
-        student_name: studentInfo.name,
-        roll_number: studentInfo.rollNumber,
+        student_name: studentInfo.name.trim(),
+        roll_number: studentInfo.rollNumber.trim(),
       });
       setQuestions(response.data.questions);
       setTimeRemaining(response.data.duration_minutes * 60);
@@ -318,50 +354,85 @@ const StudentQuiz = () => {
   };
 
   const handleDownloadPdf = async () => {
-    const resultsElement = resultsRef.current;
-    if (!resultsElement) return;
     setLoading(true);
     try {
-      const canvas = await html2canvas(resultsElement, {
-        scale: 2,
-        ignoreElements: (element) => element.classList.contains('pdf-ignore'),
+      const doc = new jsPDF();
+
+      doc.setFontSize(20);
+      doc.setFont("helvetica", "bold");
+      doc.text("Quiz Performance Report", 105, 22, { align: "center" });
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "normal");
+      doc.text(testInfo.title, 105, 32, { align: "center" });
+      doc.setLineWidth(0.5);
+      doc.line(15, 40, 195, 40);
+      doc.setFontSize(11);
+      doc.text(`Student:`, 15, 50);
+      doc.setFont("helvetica", "bold");
+      doc.text(studentInfo.name, 35, 50);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Roll Number:`, 15, 57);
+      doc.setFont("helvetica", "bold");
+      doc.text(studentInfo.rollNumber, 42, 57);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Submitted On:`, 195, 50, { align: "right" });
+      doc.setFont("helvetica", "bold");
+      doc.text(new Date().toLocaleString(), 195, 57, { align: "right" });
+      doc.setLineWidth(0.5);
+      doc.line(15, 65, 195, 65);
+
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Attempt #${attemptNumber}`, 105, 75, { align: "center" });
+      doc.setFontSize(22);
+      doc.text(
+        `Final Score: ${finalResult.score} / ${
+          questions.length * testInfo.marks_per_question
+        }`,
+        105,
+        85,
+        { align: "center" }
+      );
+
+      const tableColumn = ["#", "Question", "Your Answer", "Correct Answer"];
+      const tableRows = finalResult.questions.map((q, index) => [
+        index + 1,
+        q.questionText,
+        q.studentAnswer || "Not Answered",
+        q.correctAnswer,
+      ]);
+
+      autoTable(doc, {
+        head: [tableColumn],
+        body: tableRows,
+        startY: 95,
+        theme: "grid",
+        headStyles: { fillColor: [0, 83, 100] },
+        columnStyles: { 0: { cellWidth: 8, halign: "center" } },
+        didParseCell: (data) => {
+          if (data.section === "body") {
+            const rowData = finalResult.questions[data.row.index];
+            if (!rowData.isCorrect) {
+              if (data.column.index === 2) {
+                data.cell.styles.textColor = [255, 0, 0];
+              }
+            }
+          }
+        },
       });
-      const imgData = canvas.toDataURL("image/png");
 
-      const pdf = new jsPDF("p", "mm", "a4");
-      
-      pdf.setFontSize(20);
-      pdf.text(testInfo.title, 105, 20, { align: "center" });
-
-      pdf.setFontSize(12);
-      pdf.text(`Student: ${studentInfo.name}`, 15, 35);
-      pdf.text(`Roll Number: ${studentInfo.rollNumber}`, 15, 42);
-
-      pdf.text(`Total Questions: ${questions.length}`, 195, 35, { align: "right" });
-      pdf.text(`Attempt No: ${attemptNumber}`, 195, 42, { align: "right" });
-      
-      pdf.setLineWidth(0.5);
-      pdf.line(15, 50, 195, 50);
-      
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const canvasWidth = canvas.width;
-      const canvasHeight = canvas.height;
-      const ratio = canvasWidth / pdfWidth;
-      const imgHeight = canvasHeight / ratio;
-      
-      pdf.addImage(imgData, "PNG", 0, 55, pdfWidth, imgHeight);
-
-      pdf.save(
-        `${testInfo.title.replace(/ /g, "_")}_${studentInfo.rollNumber}_Attempt_${attemptNumber}.pdf`
+      doc.save(
+        `${testInfo.title.replace(/ /g, "_")}_${
+          studentInfo.rollNumber
+        }_Attempt_${attemptNumber}.pdf`
       );
     } catch (error) {
-      console.error("PDF Generation Error:", error);
-      setError("Failed to generate PDF.");
+      console.error("Error generating student PDF:", error);
+      setError("Failed to generate PDF report.");
     } finally {
       setLoading(false);
     }
   };
-
 
   const formatTime = (seconds) => {
     const minutes = Math.floor(seconds / 60);
@@ -434,6 +505,7 @@ const StudentQuiz = () => {
                         setStudentInfo({ ...studentInfo, name: e.target.value })
                       }
                       className="pl-10 w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-siemens-primary"
+                      placeholder="Name MiddleName SurName"
                     />
                   </div>
                 </div>
@@ -473,6 +545,11 @@ const StudentQuiz = () => {
           </div>
         );
       case "lobby":
+        if (loading || !testInfo) {
+          return (
+            <Loader2 className="h-12 w-12 animate-spin text-siemens-primary" />
+          );
+        }
         return (
           <StudentLobby
             test={testInfo}
@@ -568,13 +645,18 @@ const StudentQuiz = () => {
                 </button>
               ) : (
                 <button
-                  onClick={() => handleSubmitTest(false)}
+                  onClick={handleSubmitTest}
                   disabled={
+                    submitting ||
                     Object.keys(selectedAnswers).length < questions.length
                   }
-                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold disabled:opacity-50 flex items-center justify-center"
                 >
-                  Submit Test
+                  {submitting ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    "Submit Test"
+                  )}
                 </button>
               )}
             </div>
@@ -588,8 +670,7 @@ const StudentQuiz = () => {
       case "submitted":
         return (
           <div className="max-w-3xl w-full">
-            {/* The ref is now only on the part of the screen we want to capture */}
-            <div ref={resultsRef} className="bg-white p-8 rounded-xl shadow-lg">
+            <div className="bg-white p-8 rounded-xl shadow-lg scroll-smooth">
               <div className="text-center border-b pb-6 mb-6">
                 <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
                 <h1 className="text-3xl font-bold text-gray-800">
@@ -611,19 +692,31 @@ const StudentQuiz = () => {
                 <p className="text-5xl font-bold text-siemens-primary">
                   {finalResult.score}{" "}
                   <span className="text-3xl text-gray-500">
-                    / {questions.length}
+                    / {questions.length * testInfo.marks_per_question}
                   </span>
                 </p>
               </div>
               <div className="space-y-4">
                 <h2 className="text-xl font-semibold">Question Review</h2>
                 {finalResult.questions.map((q, index) => (
-                  <div key={index} className={`p-4 border rounded-lg ${ q.isCorrect ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50" }`}>
+                  <div
+                    key={index}
+                    className={`p-4 border rounded-lg ${
+                      q.isCorrect
+                        ? "border-green-200 bg-green-50"
+                        : "border-red-200 bg-red-50"
+                    }`}
+                  >
                     <p className="font-semibold">
                       {index + 1}. {q.questionText}
                     </p>
-                    <p className={`mt-2 text-sm ${ q.isCorrect ? "text-green-800" : "text-red-800" }`}>
-                      <strong>Your Answer:</strong>{" "} {q.studentAnswer || "Not Answered"}
+                    <p
+                      className={`mt-2 text-sm ${
+                        q.isCorrect ? "text-green-800" : "text-red-800"
+                      }`}
+                    >
+                      <strong>Your Answer:</strong>{" "}
+                      {q.studentAnswer || "Not Answered"}
                     </p>
                     {!q.isCorrect && (
                       <p className="mt-1 text-sm text-blue-800">
@@ -634,14 +727,16 @@ const StudentQuiz = () => {
                 ))}
               </div>
             </div>
-            {/* These buttons are now outside the ref, so they won't appear in the PDF */}
-            <div className="text-center mt-8 space-x-4 pdf-ignore">
-              <button
-                onClick={() => { setView("lobby"); setError(""); }}
+            <div className="text-center mt-8 space-x-4">
+              {/* <button
+                onClick={() => {
+                  setView("lobby");
+                  setError("");
+                }}
                 className="bg-gray-200 text-gray-800 py-3 px-6 rounded-lg hover:bg-gray-300"
               >
                 Back to Lobby
-              </button>
+              </button> */}
               <button
                 onClick={handleDownloadPdf}
                 disabled={loading}

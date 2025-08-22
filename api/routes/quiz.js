@@ -2,16 +2,9 @@ import express from "express";
 import seedrandom from "seedrandom";
 import { db } from "../database/schema.js";
 import { generateQuestionForStudent } from "../utils/questionGenerator.js";
-import { authenticateToken } from "../middleware/auth.js"; // Assuming you might want to protect some routes
 
 const router = express.Router();
 
-/**
- * Shuffles an array deterministically using a seed.
- * @param {Array} array The array to shuffle.
- * @param {string} seed The seed for the random number generator.
- * @returns {Array} The shuffled array.
- */
 function shuffleArray(array, seed) {
   const rng = seedrandom(seed);
   let currentIndex = array.length;
@@ -27,13 +20,6 @@ function shuffleArray(array, seed) {
   return array;
 }
 
-/**
- * A centralized function to get the exact questions a student should see for an attempt.
- * @param {number} testId The ID of the test.
- * @param {string} rollNumber The student's roll number for seeding.
- * @param {number} attemptNumber The specific attempt number for unique shuffling.
- * @returns {Promise<object>} An object containing the selected templates and test details.
- */
 const getQuestionsForAttempt = async (testId, rollNumber, attemptNumber) => {
   const testResult = await db.query("SELECT * FROM tests WHERE id = $1", [
     testId,
@@ -53,7 +39,6 @@ const getQuestionsForAttempt = async (testId, rollNumber, attemptNumber) => {
   const neededRandomCount =
     test.number_of_questions - compulsoryQuestions.length;
 
-  // The seed now includes the attempt number, creating a unique shuffle for each attempt.
   const attemptSeed = `${rollNumber}-${attemptNumber}`;
   const shuffledRandomPool = shuffleArray(randomPoolQuestions, attemptSeed);
   const selectedRandomQuestions = shuffledRandomPool.slice(
@@ -62,13 +47,11 @@ const getQuestionsForAttempt = async (testId, rollNumber, attemptNumber) => {
   );
 
   let finalTemplates = [...compulsoryQuestions, ...selectedRandomQuestions];
-  // The final shuffle also uses the unique attempt seed.
   finalTemplates = shuffleArray(finalTemplates, `${attemptSeed}-final`);
 
   return { selectedTemplates: finalTemplates, test };
 };
 
-// Gets public test info and any past attempts for a given student
 router.get("/test/:testLink", async (req, res) => {
   try {
     const { testLink } = req.params;
@@ -86,8 +69,11 @@ router.get("/test/:testLink", async (req, res) => {
     let attempts = [];
     if (roll_number && name) {
       const studentResult = await db.query(
-        "SELECT id FROM students WHERE roll_number = $1 AND LOWER(name) = LOWER($2) AND teacher_id = $3",
-        [roll_number, name, test.teacher_id]
+        `SELECT id FROM students 
+                 WHERE LOWER(TRIM(roll_number)) = LOWER($1) 
+                 AND LOWER(TRIM(name)) = LOWER($2) 
+                 AND teacher_id = $3`,
+        [roll_number.trim(), name.trim(), test.teacher_id]
       );
 
       if (studentResult.rows.length === 0) {
@@ -114,7 +100,6 @@ router.get("/test/:testLink", async (req, res) => {
   }
 });
 
-// Starts a test or a new attempt
 router.post("/test/:testLink/start", async (req, res) => {
   const { student_name, roll_number } = req.body;
   const { testLink } = req.params;
@@ -193,7 +178,6 @@ router.post("/test/:testLink/start", async (req, res) => {
   }
 });
 
-// Submits the test
 router.post("/attempt/:testLink/submit", async (req, res) => {
   const { testLink } = req.params;
   const { roll_number, name, answers, attempt_number } = req.body;
@@ -284,7 +268,6 @@ router.post("/attempt/:testLink/submit", async (req, res) => {
   }
 });
 
-// Gets details for the PDF
 router.get("/attempt/:attemptId/details-for-pdf", async (req, res) => {
   try {
     const { attemptId } = req.params;

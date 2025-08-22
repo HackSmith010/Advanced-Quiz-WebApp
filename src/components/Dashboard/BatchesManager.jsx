@@ -496,6 +496,7 @@ const BatchesManager = () => {
                     })
                   }
                   className="w-full pl-10 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-siemens-primary"
+                  placeholder="Name MiddleName SurName"
                 />
               </div>
             </div>
@@ -518,6 +519,7 @@ const BatchesManager = () => {
                     })
                   }
                   className="w-full pl-10 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-siemens-primary"
+                  placeholder="1234"
                 />
               </div>
             </div>
@@ -539,6 +541,7 @@ const BatchesManager = () => {
                     })
                   }
                   className="w-full pl-10 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-siemens-primary"
+                  placeholder="email@example.com"
                 />
               </div>
             </div>

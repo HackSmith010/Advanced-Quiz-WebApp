@@ -1,17 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { Plus, Edit, Trash2, Search, Users } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+import { Plus, Edit, Trash2, Search, Users } from "lucide-react";
 
 const StudentsManager = () => {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
   const [formData, setFormData] = useState({
-    name: '',
-    rollNumber: '',
-    email: ''
+    name: "",
+    rollNumber: "",
+    email: "",
   });
 
   useEffect(() => {
@@ -20,10 +20,10 @@ const StudentsManager = () => {
 
   const fetchStudents = async () => {
     try {
-      const response = await axios.get('/api/students');
+      const response = await axios.get("/api/students");
       setStudents(response.data);
     } catch (error) {
-      console.error('Error fetching students:', error);
+      console.error("Error fetching students:", error);
     } finally {
       setLoading(false);
     }
@@ -37,52 +37,57 @@ const StudentsManager = () => {
       if (editingStudent) {
         await axios.put(`/api/students/${editingStudent.id}`, formData);
       } else {
-        await axios.post('/api/students', formData);
+        await axios.post("/api/students", formData);
       }
-      
+
       fetchStudents();
       closeModal();
     } catch (error) {
-      console.error('Error saving student:', error);
+      console.error("Error saving student:", error);
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async (studentId) => {
-    if (window.confirm('Are you sure you want to delete this student?')) {
+    if (window.confirm("Are you sure you want to delete this student?")) {
       try {
         await axios.delete(`/api/students/${studentId}`);
         fetchStudents();
       } catch (error) {
-        console.error('Error deleting student:', error);
+        console.error("Error deleting student:", error);
       }
     }
   };
 
   const openModal = (student = null) => {
     setEditingStudent(student);
-    setFormData(student ? {
-      name: student.name,
-      rollNumber: student.roll_number,
-      email: student.email || ''
-    } : {
-      name: '',
-      rollNumber: '',
-      email: ''
-    });
+    setFormData(
+      student
+        ? {
+            name: student.name,
+            rollNumber: student.roll_number,
+            email: student.email || "",
+          }
+        : {
+            name: "",
+            rollNumber: "",
+            email: "",
+          }
+    );
     setShowModal(true);
   };
 
   const closeModal = () => {
     setShowModal(false);
     setEditingStudent(null);
-    setFormData({ name: '', rollNumber: '', email: '' });
+    setFormData({ name: "", rollNumber: "", email: "" });
   };
 
-  const filteredStudents = students.filter(student =>
-    student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    student.roll_number.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredStudents = students.filter(
+    (student) =>
+      student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      student.roll_number.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   if (loading && students.length === 0) {
@@ -97,7 +102,9 @@ const StudentsManager = () => {
     <div>
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Students Management</h1>
+          <h1 className="text-3xl font-bold text-gray-900">
+            Students Management
+          </h1>
           <p className="text-gray-600 mt-2">Manage your student roster</p>
         </div>
         <button
@@ -128,8 +135,12 @@ const StudentsManager = () => {
         {filteredStudents.length === 0 ? (
           <div className="text-center py-12">
             <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No Students Found</h3>
-            <p className="text-gray-600">Get started by adding your first student.</p>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              No Students Found
+            </h3>
+            <p className="text-gray-600">
+              Get started by adding your first student.
+            </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -166,7 +177,9 @@ const StudentsManager = () => {
                           </div>
                         </div>
                         <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">{student.name}</div>
+                          <div className="text-sm font-medium text-gray-900">
+                            {student.name}
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -174,7 +187,7 @@ const StudentsManager = () => {
                       {student.roll_number}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {student.email || 'Not provided'}
+                      {student.email || "Not provided"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {new Date(student.created_at).toLocaleDateString()}
@@ -206,9 +219,9 @@ const StudentsManager = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-full max-w-md">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">
-              {editingStudent ? 'Edit Student' : 'Add New Student'}
+              {editingStudent ? "Edit Student" : "Add New Student"}
             </h2>
-            
+
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -218,11 +231,14 @@ const StudentsManager = () => {
                   type="text"
                   required
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="Name MiddleName SurName"
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Roll Number
@@ -231,11 +247,13 @@ const StudentsManager = () => {
                   type="text"
                   required
                   value={formData.rollNumber}
-                  onChange={(e) => setFormData({ ...formData, rollNumber: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, rollNumber: e.target.value })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Email (Optional)
@@ -243,11 +261,13 @@ const StudentsManager = () => {
                 <input
                   type="email"
                   value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              
+
               <div className="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"
@@ -261,7 +281,7 @@ const StudentsManager = () => {
                   disabled={loading}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {loading ? 'Saving...' : (editingStudent ? 'Update' : 'Add')}
+                  {loading ? "Saving..." : editingStudent ? "Update" : "Add"}
                 </button>
               </div>
             </form>
