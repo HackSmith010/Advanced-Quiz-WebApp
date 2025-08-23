@@ -9,7 +9,7 @@ import {
   X,
   ChevronRight,
   Loader2,
-  Check,
+  Check as CheckIcon,
   RotateCcw,
   AlertTriangle,
   RefreshCw,
@@ -86,7 +86,11 @@ const QuestionsManager = () => {
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
-  const [showSubjectModal, setShowSubjectModal] = useState(false);
+
+  const [showCreateSubjectModal, setShowCreateSubjectModal] = useState(false);
+  const [showEditSubjectModal, setShowEditSubjectModal] = useState(false);
+  const [editingSubject, setEditingSubject] = useState(null);
+
   const [showEditModal, setShowEditModal] = useState(false);
   const [newSubjectName, setNewSubjectName] = useState("");
   const [editingQuestion, setEditingQuestion] = useState(null);
@@ -145,7 +149,7 @@ const QuestionsManager = () => {
     try {
       await axios.post("/api/subjects", { name: newSubjectName });
       fetchSubjects();
-      setShowSubjectModal(false);
+      setShowCreateSubjectModal(false);
       setNewSubjectName("");
     } catch (error) {
       console.error("Error creating subject", error);
@@ -156,6 +160,40 @@ const QuestionsManager = () => {
         );
       } else {
         setError("Failed to create chapter.");
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const openEditSubjectModal = (subject) => {
+    setEditingSubject(subject);
+    setNewSubjectName(subject.name);
+    setShowEditSubjectModal(true);
+    setError("");
+  };
+
+  const handleUpdateSubject = async (e) => {
+    e.preventDefault();
+    setActionLoading(true);
+    setError("");
+    try {
+      await axios.put(`/api/subjects/${editingSubject.id}`, {
+        name: newSubjectName,
+      });
+      fetchSubjects();
+      setShowEditSubjectModal(false);
+      setEditingSubject(null);
+      setNewSubjectName("");
+    } catch (error) {
+      console.error("Error updating subject", error);
+      if (error.response && error.response.status === 409) {
+        setError(
+          error.response.data.error ||
+            "A chapter with this name already exists."
+        );
+      } else {
+        setError("Failed to update chapter.");
       }
     } finally {
       setActionLoading(false);
@@ -200,12 +238,17 @@ const QuestionsManager = () => {
 
   const openEditModal = (question) => {
     setEditingQuestion(question);
+    const variablesAsString = JSON.stringify(
+      question.details.variables || {},
+      null,
+      2
+    );
     setFormData({
-      type: question.type,
-      original_text: question.original_text,
-      question_template: question.question_template,
-      category: question.category,
-      details: JSON.parse(JSON.stringify(question.details)),
+      ...question,
+      details: {
+        ...question.details,
+        variables_text: variablesAsString,
+      },
     });
     setShowEditModal(true);
   };
@@ -213,8 +256,23 @@ const QuestionsManager = () => {
   const handleUpdateQuestion = async (e) => {
     e.preventDefault();
     setActionLoading(true);
+    let variablesObject;
     try {
-      let finalDetails = { ...formData.details };
+      if (formData.type === "numerical") {
+        variablesObject = JSON.parse(formData.details.variables_text);
+      }
+    } catch (jsonError) {
+      alert("The 'Variables' field contains invalid JSON. Please correct it.");
+      setActionLoading(false);
+      return;
+    }
+
+    try {
+      const finalDetails = {
+        ...formData.details,
+        variables: variablesObject,
+      };
+      delete finalDetails.variables_text;
 
       if (
         formData.type === "numerical" &&
@@ -252,44 +310,40 @@ const QuestionsManager = () => {
     }
   };
 
-  const handleDeleteClick = (question) => {
-    setItemToDelete(question);
+  const handleDeleteClick = (type, item) => {
+    setItemToDelete({ type, data: item });
     setShowConfirmModal(true);
-  };
-
-  const handleSoftDelete = async (questionId) => {
-    setActionLoading(true);
-    try {
-      await axios.put(`/api/questions/${questionId}/status`, {
-        status: "rejected",
-        subjectId: null,
-      });
-      fetchQuestions();
-      fetchSubjects();
-    } catch (error) {
-      console.error("Error moving question to rejected:", error);
-    } finally {
-      setActionLoading(false);
-      setShowConfirmModal(false);
-      setItemToDelete(null);
-    }
   };
 
   const confirmDelete = async () => {
     if (!itemToDelete) return;
-
-    if (selectedView.type === "subject") {
-      handleSoftDelete(itemToDelete.id);
-      return;
-    }
-
     setActionLoading(true);
     try {
-      await axios.delete(`/api/questions/${itemToDelete.id}`);
-      fetchQuestions();
-      fetchSubjects();
+      if (itemToDelete.type === "subject") {
+        await axios.delete(`/api/subjects/${itemToDelete.data.id}`);
+        if (selectedView.id === itemToDelete.data.id) {
+          setSelectedView({
+            type: "status",
+            id: "pending_review",
+            name: "Pending Review",
+          });
+        }
+        fetchSubjects();
+      } else if (itemToDelete.type === "question") {
+        if (selectedView.type === "subject") {
+          await axios.put(`/api/questions/${itemToDelete.data.id}/status`, {
+            status: "rejected",
+            subjectId: null,
+          });
+          fetchQuestions();
+          fetchSubjects();
+        } else {
+          await axios.delete(`/api/questions/${itemToDelete.data.id}`);
+          fetchQuestions();
+        }
+      }
     } catch (error) {
-      console.error("Error deleting question", error);
+      console.error(`Error deleting ${itemToDelete.type}`, error);
     } finally {
       setActionLoading(false);
       setShowConfirmModal(false);
@@ -351,7 +405,10 @@ const QuestionsManager = () => {
                 Chapters
               </h2>
               <button
-                onClick={() => setShowSubjectModal(true)}
+                onClick={() => {
+                  setShowCreateSubjectModal(true);
+                  setError("");
+                }}
                 className="p-1.5 rounded-md text-siemens-primary hover:bg-siemens-primary-50"
                 title="Add New Chapter"
               >
@@ -362,19 +419,54 @@ const QuestionsManager = () => {
               <div
                 key={subject.id}
                 onClick={() => setSelectedView({ type: "subject", ...subject })}
-                className={`flex items-center justify-between p-4 cursor-pointer transition-colors ${
+                className={`p-4 cursor-pointer transition-colors group ${
                   selectedView.id === subject.id
-                    ? "bg-siemens-primary-50 text-siemens-primary font-semibold"
-                    : "hover:bg-gray-50 text-gray-700"
+                    ? "bg-siemens-primary-50"
+                    : "hover:bg-gray-50"
                 }`}
               >
-                <div>
-                  <p>{subject.name}</p>
-                  <p className="text-xs text-gray-500">
-                    {subject.question_count} questions
-                  </p>
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p
+                      className={`font-medium ${
+                        selectedView.id === subject.id
+                          ? "text-siemens-primary"
+                          : "text-gray-700"
+                      }`}
+                    >
+                      {subject.name}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {subject.question_count} questions
+                    </p>
+                  </div>
+                  <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEditSubjectModal(subject);
+                      }}
+                      className="p-1 text-blue-600 hover:bg-blue-100 rounded"
+                      title="Edit Chapter"
+                    >
+                      <Edit size={14} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteClick("subject", subject);
+                      }}
+                      className="p-1 text-red-600 hover:bg-red-100 rounded"
+                      title="Delete Chapter"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                  <ChevronRight
+                    size={18}
+                    className="text-gray-400 group-hover:opacity-0"
+                  />
                 </div>
-                <ChevronRight size={18} />
               </div>
             ))}
           </nav>
@@ -450,19 +542,17 @@ const QuestionsManager = () => {
                         >
                           <Edit size={16} />
                         </button>
-                        {selectedView.id !== "pending_review" && (
-                          <button
-                            onClick={() => handleDeleteClick(q)}
-                            className="p-2 text-red-600 hover:bg-red-100 rounded-lg"
-                            title={
-                              selectedView.type === "subject"
-                                ? "Move to Rejected"
-                                : "Delete Permanently"
-                            }
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        )}
+                        <button
+                          onClick={() => handleDeleteClick("question", q)}
+                          className="p-2 text-red-600 hover:bg-red-100 rounded-lg"
+                          title={
+                            selectedView.type === "subject"
+                              ? "Move to Rejected"
+                              : "Delete Permanently"
+                          }
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -496,7 +586,7 @@ const QuestionsManager = () => {
                           disabled={!pendingAssignments[q.id]}
                           className="flex items-center text-xs font-semibold text-green-700 bg-green-100 hover:bg-green-200 px-3 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <Check size={14} className="mr-1.5" /> Approve
+                          <CheckIcon size={14} className="mr-1.5" /> Approve
                         </button>
                         <button
                           onClick={() => handleRejectQuestion(q.id)}
@@ -523,9 +613,9 @@ const QuestionsManager = () => {
         </div>
       </div>
 
-      {showSubjectModal && (
+      {showCreateSubjectModal && (
         <Modal
-          onClose={() => setShowSubjectModal(false)}
+          onClose={() => setShowCreateSubjectModal(false)}
           title="Create New Chapter"
           maxWidth="md"
         >
@@ -551,7 +641,7 @@ const QuestionsManager = () => {
             <div className="flex justify-end space-x-3 pt-4 border-t">
               <button
                 type="button"
-                onClick={() => setShowSubjectModal(false)}
+                onClick={() => setShowCreateSubjectModal(false)}
                 className="px-4 py-2 border rounded-lg hover:bg-gray-50"
               >
                 Cancel
@@ -568,7 +658,50 @@ const QuestionsManager = () => {
         </Modal>
       )}
 
-      {/* --- THIS IS THE MISSING EDIT MODAL --- */}
+      {showEditSubjectModal && (
+        <Modal
+          onClose={() => setShowEditSubjectModal(false)}
+          title="Edit Chapter"
+          maxWidth="md"
+        >
+          <form onSubmit={handleUpdateSubject} className="space-y-4">
+            {error && (
+              <div className="bg-red-100 text-red-700 p-3 rounded-md text-sm">
+                {error}
+              </div>
+            )}
+            <div>
+              <label className="block text-sm font-medium text-siemens-secondary mb-2">
+                Chapter Name
+              </label>
+              <input
+                type="text"
+                value={newSubjectName}
+                onChange={(e) => setNewSubjectName(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-siemens-primary"
+                required
+              />
+            </div>
+            <div className="flex justify-end space-x-3 pt-4 border-t">
+              <button
+                type="button"
+                onClick={() => setShowEditSubjectModal(false)}
+                className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={actionLoading}
+                className="px-4 py-2 bg-siemens-primary text-white rounded-lg hover:bg-siemens-primary-dark disabled:opacity-50"
+              >
+                {actionLoading ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
       {showEditModal && formData && (
         <Modal
           onClose={() => setShowEditModal(false)}
@@ -608,13 +741,21 @@ const QuestionsManager = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium">
-                    Variables (Read-only)
+                    Variables (Editable JSON)
                   </label>
                   <textarea
-                    value={JSON.stringify(formData.details.variables, null, 2)}
-                    readOnly
-                    rows="3"
-                    className="w-full mt-1 p-2 border rounded-lg bg-gray-100 font-mono text-sm"
+                    value={formData.details.variables_text}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        details: {
+                          ...formData.details,
+                          variables_text: e.target.value,
+                        },
+                      })
+                    }
+                    rows="4"
+                    className="w-full mt-1 p-2 border rounded-lg font-mono text-sm"
                   />
                 </div>
                 <div>
@@ -644,7 +785,7 @@ const QuestionsManager = () => {
                     value={
                       Array.isArray(formData.details.distractor_formulas)
                         ? formData.details.distractor_formulas.join("\n")
-                        : ""
+                        : formData.details.distractor_formulas
                     }
                     onChange={(e) =>
                       setFormData({
@@ -691,7 +832,7 @@ const QuestionsManager = () => {
                     value={
                       Array.isArray(formData.details.distractors)
                         ? formData.details.distractors.join("\n")
-                        : ""
+                        : formData.details.distractors
                     }
                     onChange={(e) =>
                       setFormData({
@@ -746,17 +887,25 @@ const QuestionsManager = () => {
         onClose={() => setShowConfirmModal(false)}
         onConfirm={confirmDelete}
         title={
-          selectedView.type === "subject"
+          itemToDelete?.type === "subject"
+            ? "Delete Chapter"
+            : selectedView.type === "subject"
             ? "Remove Question"
             : "Delete Question"
         }
         message={
-          selectedView.type === "subject"
-            ? "Are you sure you want to remove this question from the chapter? It will be moved to the 'Rejected' section for later review."
+          itemToDelete?.type === "subject"
+            ? `Are you sure you want to delete the chapter "${itemToDelete.data.name}"? All questions within it will be uncategorized.`
+            : selectedView.type === "subject"
+            ? "Are you sure you want to remove this question from the chapter? It will be moved to the 'Rejected' section."
             : "Are you sure you want to permanently delete this question? This action cannot be undone."
         }
         confirmText={
-          selectedView.type === "subject" ? "Remove" : "Delete Permanently"
+          itemToDelete?.type === "subject"
+            ? "Delete Chapter"
+            : selectedView.type === "subject"
+            ? "Remove"
+            : "Delete Permanently"
         }
       />
     </div>

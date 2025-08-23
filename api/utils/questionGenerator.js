@@ -45,14 +45,10 @@ function evaluateFormula(formula, scope) {
 
 export function generateQuestionForStudent(question, rollNumber, index) {
   const seed = `${rollNumber}-${question.id}-${index}`;
-  const details = question.details || {}; // Always use the details object
+  const details = question.details || {};
 
   if (question.type === "numerical") {
-    // MODIFIED: Access all numerical data from the nested 'details' object
     const variables = details.variables || {};
-    const correctAnswerFormula = details.correct_answer_formula;
-    const distractorFormulas = details.distractor_formulas || [];
-
     const scope = {};
     const rng = seedrandom(seed);
 
@@ -64,11 +60,14 @@ export function generateQuestionForStudent(question, rollNumber, index) {
         );
         return null;
       }
-      const randomFactor = 0.8 + rng() * 0.4; // +/- 20%
+      const randomFactor = 0.8 + rng() * 0.4;
       scope[key] = Math.round(originalValue * randomFactor);
     }
 
-    const correctAnswer = evaluateFormula(correctAnswerFormula, scope);
+    const correctAnswer = evaluateFormula(
+      details.correct_answer_formula,
+      scope
+    );
     if (correctAnswer === null) {
       console.error(
         `Could not generate a valid answer for numerical question ID: ${question.id}. Skipping.`
@@ -76,11 +75,27 @@ export function generateQuestionForStudent(question, rollNumber, index) {
       return null;
     }
 
-    const distractorAnswers = distractorFormulas
+    let distractorAnswers = (details.distractor_formulas || [])
       .map((formula) => evaluateFormula(formula, scope))
       .filter((opt) => opt !== null && opt !== correctAnswer);
 
-    const finalOptions = [...new Set([correctAnswer, ...distractorAnswers])];
+    while (distractorAnswers.length < 3) {
+      const randomFactor = 0.5 + rng() * 1.5;
+      const calculatedDistractor = parseFloat(correctAnswer) * randomFactor;
+      const roundedDistractor = (
+        Math.round(calculatedDistractor * 100) / 100
+      ).toString();
+      if (
+        roundedDistractor !== correctAnswer &&
+        !distractorAnswers.includes(roundedDistractor)
+      ) {
+        distractorAnswers.push(roundedDistractor);
+      }
+    }
+
+    const finalOptions = [
+      ...new Set([correctAnswer, ...distractorAnswers.slice(0, 3)]),
+    ];
 
     let questionText = question.question_template || question.original_text;
     for (const key in scope) {
