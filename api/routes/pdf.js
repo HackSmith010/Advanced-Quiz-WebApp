@@ -8,11 +8,8 @@ import { authenticateToken } from '../middleware/auth.js';
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
-router.post('/upload', authenticateToken, upload.single('pdf'), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No PDF file uploaded.' });
-  }
-
+async function processPdfInBackground(fileBuffer, userId) {
+  console.log("Starting background processing for user:", userId);
   try {
     const options = {
         pagerender: (pageData) => {
@@ -21,13 +18,12 @@ router.post('/upload', authenticateToken, upload.single('pdf'), async (req, res)
         }
     };
 
-    const data = await pdf(req.file.buffer, options);
+    const data = await pdf(fileBuffer, options);
     const totalPages = data.numpages;
     let allGeneratedQuestions = [];
 
     const pagesText = data.text.split(/\n\n\n/).filter(p => p.trim().length > 0);
 
-    // Process the PDF one page at a time.
     for (let i = 0; i < pagesText.length; i++) {
       const pageText = pagesText[i];
       console.log(`\nProcessing Page ${i + 1} of ${totalPages}...`);
@@ -52,12 +48,10 @@ router.post('/upload', authenticateToken, upload.single('pdf'), async (req, res)
     console.log(`\nAI processing complete. Found ${allGeneratedQuestions.length} total valid questions.`);
 
     if (allGeneratedQuestions.length === 0) {
-      return res.status(400).json({ 
-        error: 'No valid questions could be extracted from the PDF.' 
-      });
+      console.warn("No questions were generated from the PDF.");
+      return;
     }
     
-    // Save all successfully extracted questions to the database.
     const client = await db.getClient();
     try {
         await client.query('BEGIN');
@@ -71,26 +65,32 @@ router.post('/upload', authenticateToken, upload.single('pdf'), async (req, res)
               : q.details;
             
             await client.query(insertQuery, [
-                q.type, q.original_text, q.question_template, q.category, details, req.user.userId
+                q.type, q.original_text, q.question_template, q.category, details, userId
             ]);
         }
         await client.query('COMMIT');
+        console.log("✅ Questions successfully saved to database from background process.");
     } catch (dbError) {
         await client.query('ROLLBACK');
-        console.error('Database error during question insertion:', dbError);
-        return res.status(500).json({ error: 'Failed to save questions.' });
+        console.error('Database error during background question insertion:', dbError);
     } finally {
         client.release();
     }
-
-    res.status(201).json({ 
-      message: `Successfully added ${allGeneratedQuestions.length} new questions for review.` 
-    });
-
   } catch (error) {
-    console.error('Error processing PDF upload:', error);
-    res.status(500).json({ error: error.message || 'Failed to process PDF.' });
+    console.error('Error during background PDF processing:', error);
   }
+}
+
+router.post('/upload', authenticateToken, upload.single('pdf'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No PDF file uploaded.' });
+  }
+
+  res.status(202).json({ 
+    message: "Your PDF has been received and is being processed. The questions will appear in the 'Pending Review' section shortly." 
+  });
+
+  processPdfInBackground(req.file.buffer, req.user.userId);
 });
 
 export default router;
